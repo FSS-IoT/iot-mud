@@ -1,0 +1,23 @@
+[project]
+name = "iot-mud"
+version = "0.1.0"
+description = "An IoT MUD bridging digital text with physical reality."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "websockets>=12.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "PyYAML>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.5",
+    "ruff>=0.3.0",
+]
+
+[tool.ruff]
+line-length = 88
+```pyproject.toml
