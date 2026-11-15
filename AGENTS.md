@@ -11,12 +11,24 @@ This document provides essential context and standards for agents working in thi
   - Asyncio-first: Use `async`/`await` for I/O bound operations.
 - **Verification**: Always use `pytest` to verify changes. Do not consider a task complete without passing tests.
 
-## Development Workflow
-- **Linting & Formatting**: Prefer `ruff`. Run `uv run ruff check .` and `uv run ruff format .` before committing.
-- **Testing**: 
-  - Unit tests: `uv run pytest tests/unit`
-  - Integration tests: `uv run pytest tests/integration`
-- **Execution**: Use `uv run python -m <module_name>` to execute the application or scripts.
+## Agentic Orchestration & Workflow
+
+### Task Execution Model (Red-Green)
+This repository strictly adheres to a **Test-Driven Development (TDD)** lifecycle for all new features and bug fixes:
+1.  **RED PHASE:** Write a failing test that defines the desired behavior. A task is only considered "started" once this failure is verified.
+2.  **GREEN PHASE:** Implement the minimum code required to make the test pass.
+3.  **REFACTOR/DONE Phase:** Clean the code and mark the task as `[x] DONE` in the `BACKLOG.md`.
+
+### Subagent Orchestration & Dependency Management
+To prevent wasted compute and context fragmentation, agents must follow these orchestration rules:
+
+1.  **Dependency Gatekeeping:** Before spawning a subagent or starting work on a new task, check `BACKLOG.md`. If the current task has prerequisite tasks that are not marked as `[x] DONE`, **STOP**. The agent is blocked and cannot proceed until dependencies are completed.
+2.  **Sequential Milestone Progression:** Subagents should generally be assigned to a single task within an active milestone. Do not attempt to parallelize subagents across different milestones unless it is explicitly authorized by the Lead Developer in conversation.
+3.g **Contextual Awareness:** When spawned, a subagent must be aware of its specific scope (e.g., "You are working on TASK-005, do not touch Task 002").
+
+### Communication & Accountability
+*   **Progress Tracking:** Every task completed or failed must be reflected in the `BACKLOG.md`.
+*   **Task Identification:** All commits and communications should reference the specific **[TASK-XXXX]** ID being addressed.
 
 ## Architecture Principles (Intended)
 *Note: These are guiding principles for the upcoming implementation phase.*
