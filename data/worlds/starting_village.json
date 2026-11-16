@@ -1,0 +1,72 @@
+{
+  "start_location": "gate",
+  "rooms": [
+    {
+      "id": "gate",
+      "name": "Village Gate",
+      "description": "A heavy stone gate stands tall. To the north is the Marketplace.",
+      "exits": {
+        "north": "market"
+      },
+      "item_ids": []
+    },
+    {
+      "id": "market",
+      "name": "Marketplace",
+      "description": "Lively vendors cry out their wares. Exits lead South, West, and North.",
+      "exits": {
+        "south": "gate",
+        "west": "shop",
+        "north": "forest"
+      },
+      "item_ids": ["gold_coin"]
+    },
+    {
+      "id": "tavern",
+      "name": "Old Tavern",
+      "description": "Warmth radiates from within. The smell of roasted meat lingers. Exits West.",
+      "exits": {
+        "west": "market"
+      },
+      "item_ids": ["bread"]
+    },
+    {
+      "id": "shop",
+      "name": "Alchemist Shop",
+      "description": "Vials glimmer on shelves. It smells of sulfur.",
+      "exits": {
+        "east": "market"
+      },
+      "item_ids": ["torch"]
+    },
+    {
+      "id": "forest",
+      "name": "Mysterious Forest",
+      "description": "Trees loom high above, blocking much of the sun.",
+      "exits": {
+        "south": "market"
+      },
+      "item_ids": []
+    }
+  ],
+  "items": [
+    {
+      "id": "gold_coin",
+      "name": "Gold Coin",
+      "description": "A shiny, minted copper coin.",
+      "weight": 0.01
+    },
+    {
+      "id": "torch",
+      "name": "Torch",
+      "description": "A flickering wooden torch.",
+      "weight": 0.5
+    },
+    {
+      "id": "bread",
+      "name": "Loaf of Bread",
+      "description": "A stale but edible loaf.",
+      "weight": 0.3
+    }
+  ]
+}

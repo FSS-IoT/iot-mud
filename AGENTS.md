@@ -4,7 +4,7 @@ This document provides essential context and standards for agents working in thi
 
 ## Environment & Standards
 - **Runtime**: Python 3.12+
-- **Dependency Management**: Use `uv`. Always ensure the environment is synchronized before executing commands (`uv sync`). Avoid installing packages globally.
+- **Dependency Management**: Use `uv`(or venv if uv is not installed). Always ensure the environment is synchronized before executing commands (`uv sync`). Avoid installing packages globally.
 - **Code Style**: 
   - Strict type hinting for all public functions and class methods.
   - Modular design: Avoid monolithicizing logic in a single file.
