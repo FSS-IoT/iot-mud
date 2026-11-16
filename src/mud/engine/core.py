@@ -58,10 +58,14 @@ class Engine:
         # --- 2. ALIAS RESOLUTION & NORMALIZATION ---
         aliases = {
             "get": "take", "pick": "take", "grab": "take",
-            "l": "look", "n": "go north", "s": "go south", 
-            "e": "go east", "w": "go west", "u": "go up", 
-            "d": "go down", "up": "go up", "down": "go down",
-            "exits": "show_exits" # Reserved alias for room details
+            "l": "look", 
+            "n": "go north", "north": "go north",
+            "s": "go south", "south": "go south", 
+            "e": "go east",  "east": "go east",
+            "w": "go west",  "west": "go west", 
+            "u": "go up",    "up": "go up", 
+            "d": "go down",  "down": "go down",
+            "exits": "show_exits"
         }
         
         input_str = f"{verb} {arg}".strip().lower() if arg else verb.lower()
