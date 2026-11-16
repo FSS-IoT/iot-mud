@@ -40,7 +40,8 @@ class Engine:
 
     async def process_command(self, command_text: str) -> str:
         """Translates player input into state mutation or narrative."""
-        text = command_text.strip().lower()
+        raw_text = command_text.strip()
+        text = raw_text.lower()
         if not text:
             return "Silence falls over you."
 
@@ -114,6 +115,7 @@ class Engine:
         elif resolved_verb == "go" and resolved_arg:
             if not self._player_location:
                 response = "You have no presence here to move."
+                matched = True
             else:
                 destination = self._player_location.exits.get(resolved_arg.strip())
                 if isinstance(destination, Room):
@@ -135,13 +137,16 @@ class Engine:
                     await self.emit("room_change", {"from": old_name, "to": destination.name, "desc": destination.description})
                 else:
                     response = f"You cannot go {resolved_arg}."
+                    matched = True
 
         # INTERACTION (Items)
         elif resolved_verb == "take" and resolved_arg:
             if not self.player:
                 response = "You do not exist!"
+                matched = True
             elif not self._player_location:
                 response = "There is nowhere here to take anything from."
+                matched = True
             else:
                 target_item = next((i for i in self._player_location.contents if i.name.lower() == resolved_arg.lower()), None)
                 if target_item:
@@ -158,8 +163,12 @@ class Engine:
         elif resolved_verb == "drop" and resolved_arg:
             if not self.player:
                 response = "You do not exist!"
+                matched = True
+            elif not self._player_location:
+                response = "There is nowhere here to drop anything."
+                matched = True
             else:
-                target_item = next((i for i in self.player.contents if i.name.lower() == arg.lower()), None)
+                target_item = next((i for i in self.player.contents if i.name.lower() == resolved_arg.lower()), None)
                 if target_item:
                     self.player.remove_content(target_item)
                     self._player_location.add_content(target_item)
@@ -173,7 +182,9 @@ class Engine:
 
         # SOCIAL / UTILITY
         elif resolved_verb == "say" and resolved_arg:
-            response = f'"{resolved_arg}" you proclaim.'
+            # Echo the player's own words with their original casing.
+            spoken = raw_text.split(maxsplit=1)[1]
+            response = f'You say, "{spoken}".'
             matched = True
         elif resolved_verb == "hello":
             response = "The world listens..."

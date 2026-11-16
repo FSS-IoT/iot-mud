@@ -24,4 +24,9 @@ line-length = 88
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# `src/` is a namespace package (no __init__.py), so tests must be able to
+# import `src.mud.*` from the repository root regardless of how pytest is
+# launched. Without this, `uv run pytest` fails at collection while
+# `python -m pytest` happens to work because it puts the cwd on sys.path.
+pythonpath = ["."]
 

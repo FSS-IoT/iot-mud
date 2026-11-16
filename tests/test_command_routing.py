@@ -4,17 +4,21 @@ import json
 import asyncio
 from src.mud.net.server import MudServer
 from src.mud.engine.core import Engine
+from src.mud.world.loader import load_demo_village
+
 
 @pytest.fixture
 async def server_context():
-    """Provides a clean server/client pair with a fresh engine."""
+    """Provides a clean server/client pair with a fresh, populated engine."""
     engine = Engine()
+    await load_demo_village(engine)
     server = MudServer(engine, host="localhost", port=8765)
     task = asyncio.create_task(server.run())
-    await asyncio.sleep(1) # Wait for the server to start
+    await asyncio.sleep(1)  # Wait for the server to start
     yield server, task
     server.stop()
     await task
+
 
 @pytest.mark.asyncio
 async def test_server_command_routing_look(server_context):
@@ -38,7 +42,8 @@ async def test_server_command_routing_look(server_context):
         # 3. Expect the processed response from the engine (command_reply)
         response = await websocket.recv()
         assert json.loads(response)["type"] == "command_reply"
-        assert "A dim, echoing hall" in json.loads(response)["data"]["text"]
+        assert "A heavy stone gate stands tall" in json.loads(response)["data"]["text"]
+
 
 @pytest.mark.asyncio
 async def test_server_command_routing_say(server_context):

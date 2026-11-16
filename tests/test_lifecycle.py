@@ -1,11 +1,12 @@
 import pytest
 import asyncio
+from src.mud.engine.core import Engine
 from src.mud.net.server import MudServer
 
 @pytest.mark.asyncio
 async def test_server_graceful_shutdown():
     """[TASK-003] GREEN PHASE: Verify the server can be stopped gracefully."""
-    server = MudServer(host="localhost", port=8765)
+    server = MudServer(Engine(), host="localhost", port=8765)
     
     # Start the server in a background task
     server_task = asyncio.create_task(server.run())

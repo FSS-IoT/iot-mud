@@ -26,6 +26,11 @@ async def test_prose_description_on_room_change():
     assert len(emitted_events) > 0, "The engine failed to emit 'room_change' event on state change."
     assert emitted_events[0][1]["new_room"] == "The Dark Dungeon"
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="M2 scope: prose narration is not part of M1 (SPEC.md 5). "
+    "Engine has no LLM layer yet; revisit with TASK-020/024.",
+)
 @pytest.mark.asyncio
 async def test_prose_description_ai_integration_red():
     """[TASK-009] RED PHASE: Verify that AI descriptions can be integrated into the response flow."""
