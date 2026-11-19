@@ -144,8 +144,8 @@ Example:
 ### Not yet implemented (`room_state`)
 
 `room_state` will carry the current room and its occupants when movement-driven
-presence lands (issue #24). It is documented here so clients can be built against
-it in advance; it is **not yet sent**.
+presence lands. It is documented here so clients can be built against it in
+advance; it is **not yet sent**.
 
 ## Invariants
 
