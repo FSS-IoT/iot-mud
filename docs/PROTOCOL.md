@@ -88,6 +88,26 @@ Example:
 { "v": 1, "type": "input", "id": 7, "data": { "text": "look" } }
 ```
 
+#### `join`
+
+A client announces its name so the server can register it as a player. Sent once,
+right after the handshake and before any `input`. The server registers the name
+and notifies every other player already in the same room (see `player_joined`).
+A duplicate name is silently rejected — the server does not reply.
+
+| Field | Meaning |
+|---|---|
+| `v` | Protocol version. |
+| `type` | `"join"`. |
+| `id` | Client-assigned id, echoed by any reply (none is sent on success). |
+| `data.name` | The player's chosen name. Non-ASCII names are accepted; the server rejects duplicates. |
+
+Example:
+
+```json
+{ "v": 1, "type": "join", "id": 1, "data": { "name": "Ada" } }
+```
+
 ## Request / reply pairing
 
 A client sends an `input` with an `id`. The matching `command_reply` returns a
@@ -95,17 +115,37 @@ A client sends an `input` with an `id`. The matching `command_reply` returns a
 arrive out of order. This is the current contract; broadcast events below extend
 it without breaking it.
 
-## Events (defined for M4, implemented in later tickets)
+## Events
 
-The server will push these when the multiplayer slice lands. They are documented
-here so clients can be built against them, but they are **not yet sent** — see
-issues #22–#24. Each carries a `seq` and lives under its own `type`.
+The server pushes these to notify a client of other players. Each carries a
+`seq` and lives under its own `type`, so they ride alongside replies on the same
+socket without disturbing request/reply pairing. A client distinguishes them by
+`type`.
 
-| `type` | Direction | When |
-|---|---|---|
-| `player_joined` | server -> client | Another player enters the same room. |
-| `player_left` | server -> client | A player leaves or disconnects. |
-| `room_state` | server -> client | The current room (and its occupants) is sent on join. |
+### Implemented (`player_joined`, `player_left`)
+
+Sent when another player joins or leaves the room the receiving player is in.
+They are documented here, sent by the server, and covered by contract tests.
+
+| Field | Meaning |
+|---|---|
+| `v` | Protocol version. |
+| `type` | `"player_joined"` or `"player_left"`. |
+| `event_id` | Opaque server-side identifier for this message. |
+| `seq` | Integer, currently always `0` (events are not replies). |
+| `data.name` | The name of the player who joined or left. |
+
+Example:
+
+```json
+{ "v": 1, "type": "player_joined", "event_id": "player_joined-405087656", "seq": 0, "data": { "name": "Ben" } }
+```
+
+### Not yet implemented (`room_state`)
+
+`room_state` will carry the current room and its occupants when movement-driven
+presence lands (issue #24). It is documented here so clients can be built against
+it in advance; it is **not yet sent**.
 
 ## Invariants
 

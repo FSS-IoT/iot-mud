@@ -17,6 +17,9 @@ class MudServer:
         self.port = port
         self._stop_event = asyncio.Event()
         self._server = None
+        # Maps a live websocket to the name its client announced on `join`.
+        # Used to correlate players with sockets for join/leave broadcasts.
+        self._ws_to_player: Dict[Any, str] = {}
 
     async def handler(self, websocket) -> None:
         """Handles the connection lifecycle and command routing."""
@@ -43,9 +46,11 @@ class MudServer:
                     raw_message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
                     data = json.loads(raw_message)
 
-                    if data.get("type") == "input":
+                    if data.get("type") == "join":
+                        await self._handle_join(websocket, data)
+                    elif data.get("type") == "input":
                         result_text = await self.engine.process_command(data["data"]["text"])
-                        
+
                         response = {
                             "v": 1,
                             "type": "command_reply",
@@ -54,7 +59,7 @@ class MudServer:
                             "data": {"text": result_text}
                         }
                         await websocket.send(json.dumps(response))
-                
+
                 except asyncio.TimeoutError:
                     continue
                 except websockets.exceptions.ConnectionClosed:
@@ -67,7 +72,53 @@ class MudServer:
         except Exception as e:
             logger.error(f"Error in handler loop: {e}")
         finally:
+            # A socket closed: if it announced a player, tell the room they left.
+            name = self._ws_to_player.pop(websocket, None)
+            if name is not None and self.engine.get_player(name) is not None:
+                # Broadcast first (while the player still has a location so we
+                # can compute who else is in the room), then remove them.
+                await self._broadcast_to_room(name, "player_left")
+                self.engine.remove_player(name)
             await websocket.close()
+
+    async def _handle_join(self, websocket, data: Dict[str, Any]) -> None:
+        """Register the caller as a named player and notify roommates."""
+        name = data.get("data", {}).get("name")
+        if not name or not isinstance(name, str):
+            return
+        try:
+            self.engine.register_player(name)
+        except ValueError:
+            # Name already in use; the protocol says reject duplicates. Ignore a
+            # duplicate `join` rather than crash the connection over it.
+            return
+
+        self._ws_to_player[websocket] = name
+        await self._broadcast_to_room(name, "player_joined")
+
+    async def _broadcast_to_room(self, name: str, event_type: str) -> None:
+        """Send an event to every other player currently in the same room."""
+        player = self.engine.get_player(name)
+        if player is None or player.location is None:
+            return
+        for other in self.engine.players_in_room(player.location):
+            if other.name == name:
+                continue
+            target = next((ws for ws, ws_name in self._ws_to_player.items()
+                           if ws_name == other.name), None)
+            if target is None:
+                continue
+            message = {
+                "v": 1,
+                "type": event_type,
+                "event_id": f"{event_type}-{int(asyncio.get_event_loop().time()*1000)}",
+                "seq": 0,
+                "data": {"name": name},
+            }
+            try:
+                await target.send(json.dumps(message))
+            except websockets.exceptions.ConnectionClosed:
+                pass
 
     async def run(self) -> None:
         """Starts the WebSocket server."""
