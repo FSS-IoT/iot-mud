@@ -50,7 +50,7 @@ class MudServer:
                             "v": 1,
                             "type": "command_reply",
                             "event_id": f"resp-{int(asyncio.get_event_loop().time()*1000)}",
-                            "seq": data.get("id", 0) + 1 if isinstance(data.get("id"), int) else 1,
+                            "seq": data.get("id", 0) if isinstance(data.get("id"), int) else 0,
                             "data": {"text": result_text}
                         }
                         await websocket.send(json.dumps(response))
