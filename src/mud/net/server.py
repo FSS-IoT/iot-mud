@@ -49,7 +49,12 @@ class MudServer:
                     if data.get("type") == "join":
                         await self._handle_join(websocket, data)
                     elif data.get("type") == "input":
-                        result_text = await self.engine.process_command(data["data"]["text"])
+                        # Render from this socket's registered player so `look`
+                        # can name the other occupants of the room.
+                        player_name = self._ws_to_player.get(websocket)
+                        result_text = await self.engine.process_command(
+                            data["data"]["text"], player_name
+                        )
 
                         response = {
                             "v": 1,

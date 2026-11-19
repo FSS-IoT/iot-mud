@@ -85,8 +85,14 @@ class Engine:
                 except Exception as e:
                     print(f"Event Error ({event_type}): {e}")
 
-    async def process_command(self, command_text: str) -> str:
-        """Translates player input into state mutation or narrative."""
+    async def process_command(self, command_text: str, player_name: Optional[str] = None) -> str:
+        """Translates player input into state mutation or narrative.
+
+        `player_name` is the registered name whose perspective to render from.
+        It is optional so existing single-player callers keep working unchanged;
+        only the multiplayer path (which knows each socket's registered name)
+        passes one. When given, room descriptions also list other occupants.
+        """
         raw_text = command_text.strip()
         text = raw_text.lower()
         if not text:
@@ -138,8 +144,15 @@ class Engine:
         
         # VIEWING THE WORLD
         if resolved_verb == "look":
-            if self._player_location:
-                response = self._player_location.description
+            target_player = self.get_player(player_name) if player_name else None
+            room = target_player.location if target_player is not None else self._player_location
+            if room:
+                response = room.description
+                occupants = [p for p in self._players.values()
+                             if p.location is room and p.name != player_name]
+                if occupants:
+                    listed = ", ".join(p.name for p in sorted(occupants))
+                    response += f"\n\nOthers in the room: {listed}."
                 matched = True
             else:
                 response = "You feel lost in a void."
