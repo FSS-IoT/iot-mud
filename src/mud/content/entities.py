@@ -25,6 +25,14 @@ class Entity:
     def __str__(self) -> str:
         return self.name
 
+class Player(Entity):
+    """A named player in the world. Owns its current location."""
+
+    def __init__(self, name: str, description: str = "A player."):
+        super().__init__(name=name, description=description)
+        self.location: Optional[Room] = None
+
+
 class Room(Entity):
     """A location where entities can reside."""
     def __init__(self, name: str, description: str, exits: Optional[Dict[str, Room]] = None):

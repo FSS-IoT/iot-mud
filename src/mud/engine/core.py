@@ -1,6 +1,6 @@
 import asyncio
 from typing import Any, Callable, Dict, List, Optional
-from src.mud.content import Entity, Room
+from src.mud.content import Entity, Room, Player
 
 class Engine:
     def __init__(self):
@@ -9,6 +9,10 @@ class Engine:
         self._player_location: Optional[Room] = None
         self.player: Optional[Entity] = None
         self._subscribers: Dict[str, List[Callable]] = {}
+        # Multiplayer registry. Each named player owns its location; the engine
+        # is authoritative over who is where. Legacy single-player accessors
+        # (self.player / self._player_location) remain for backward compatibility.
+        self._players: Dict[str, Player] = {}
 
     @property
     def rooms(self) -> Dict[str, Room]:
@@ -19,6 +23,49 @@ class Engine:
     def current_location(self) -> Optional[Room]:
         """Public access to the player's current room."""
         return self._player_location
+
+    def get_room(self, name: str) -> Optional[Room]:
+        """Return the room with this name, or None."""
+        return self._rooms.get(name)
+
+    # --- Player registry -----------------------------------------------------
+
+    def register_player(self, name: str) -> Player:
+        """Register a new player and spawn them at the loaded start room.
+
+        Raises ValueError if a player of that name already exists.
+        """
+        if name in self._players:
+            raise ValueError(f"Player '{name}' is already registered")
+        player = Player(name)
+        self._players[name] = player
+        player.location = self._player_location
+        if player.location is not None:
+            player.location.add_content(player)
+        return player
+
+    def get_player(self, name: str) -> Optional[Player]:
+        """Return the player with this name, or None."""
+        return self._players.get(name)
+
+    def remove_player(self, name: str) -> bool:
+        """Remove a player from the registry and clear their location.
+
+        Returns True if a player was removed, False if no such player existed.
+        """
+        player = self._players.pop(name, None)
+        if player is None:
+            return False
+        if player.location is not None:
+            player.location.remove_content(player)
+        player.location = None
+        return True
+
+    def players_in_room(self, room: Room) -> List[Player]:
+        """Return the players currently in this room."""
+        if room is None:
+            return []
+        return [p for p in self._players.values() if p.location is room]
 
     async def subscribe(self, event_type: str, callback: Callable) -> None:
         """Registers a listener for semantic events."""
