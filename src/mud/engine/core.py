@@ -108,6 +108,26 @@ class Engine:
             f"{exit_str}"
         )
 
+    @staticmethod
+    def _find_item(collection, arg: str):
+        """Find an item in `collection` by a forgiving name match.
+
+        Matches when the typed argument is a substring of the item's display name
+        (case-insensitive), so both "gold coin" and "coin" match an item named
+        "Gold Coin".
+        """
+        arg = arg.strip().lower()
+        for candidate in collection:
+            if candidate.name.lower() == arg or arg in candidate.name.lower():
+                return candidate
+        return None
+
+    def _resolve_player(self, player_name):
+        """Return the registered player to act as, falling back to the legacy slot."""
+        if player_name:
+            return self.get_player(player_name)
+        return None
+
     async def subscribe(self, event_type: str, callback: Callable) -> None:
         """Registers a listener for semantic events."""
         if event_type not in self._subscribers:
@@ -163,10 +183,16 @@ class Engine:
             "exits": "show_exits"
         }
         
-        input_str = f"{verb} {arg}".strip().lower() if arg else verb.lower()
-        resolved_verb = verb
-        resolved_arg = arg
+        # `look at X` is a common way to focus on something; treat it as `examine X`.
+        if verb.lower() == "look" and arg is not None and arg.split(maxsplit=1)[0] == "at":
+            parts = arg.split(maxsplit=1)
+            resolved_verb = "examine"
+            resolved_arg = parts[1].strip() if len(parts) > 1 else None
+        else:
+            resolved_verb = verb
+            resolved_arg = arg
 
+        input_str = f"{verb} {arg}".strip().lower() if arg else verb.lower()
         if input_str in aliases:
             alias_target = aliases[input_str]
             if " " in alias_target:
@@ -268,7 +294,27 @@ class Engine:
 
         # INTERACTION (Items)
         elif resolved_verb == "take" and resolved_arg:
-            if not self.player:
+            target_player = self._resolve_player(player_name)
+
+            if target_player is not None:
+                # Multiplayer path: take from the room into the registered player.
+                room = target_player.location
+                if room is None:
+                    response = "There is nowhere here to take anything from."
+                    matched = True
+                else:
+                    target_item = self._find_item(room.contents, resolved_arg)
+                    if target_item:
+                        room.remove_content(target_item)
+                        target_player.add_content(target_item)
+                        response = f"You picked up the {target_item.name}."
+                        matched = True
+                        await self.emit("item_taken", {"item_name": target_item.name.lower(), "owner": target_player.name})
+                    else:
+                        response = f"There is no {resolved_arg} here."
+                        matched = True
+            elif not self.player:
+                # Legacy single-player path.
                 response = "You do not exist!"
                 matched = True
             elif not self._player_location:
@@ -288,7 +334,27 @@ class Engine:
                     matched = True
 
         elif resolved_verb == "drop" and resolved_arg:
-            if not self.player:
+            target_player = self._resolve_player(player_name)
+
+            if target_player is not None:
+                # Multiplayer path: drop from the registered player into their room.
+                room = target_player.location
+                if room is None:
+                    response = "There is nowhere here to drop anything."
+                    matched = True
+                else:
+                    target_item = self._find_item(target_player.contents, resolved_arg)
+                    if target_item:
+                        target_player.remove_content(target_item)
+                        room.add_content(target_item)
+                        response = f"You dropped the {target_item.name}."
+                        matched = True
+                        await self.emit("item_dropped", {"item_name": target_item.name.lower(), "location": room.name})
+                    else:
+                        response = f"You aren't carrying any {resolved_arg}."
+                        matched = True
+            elif not self.player:
+                # Legacy single-player path.
                 response = "You do not exist!"
                 matched = True
             elif not self._player_location:
@@ -305,6 +371,27 @@ class Engine:
                     await self.emit("item_dropped", {"item_name": target_item.name.lower(), "location": self._player_location.name})
                 else:
                     response = f"You aren't carrying any {resolved_arg}."
+                    matched = True
+
+        elif resolved_verb == "examine" and resolved_arg:
+            # Focus on a specific entity the player can hold or see. The verb is
+            # `examine X` or `look at X`; both arrive here with verb "examine".
+            # Prefer an item the examiner holds; otherwise describe a named player in
+            # the room (the target's presence does not depend on the examiner being registered).
+            player = self._resolve_player(player_name)
+            room = player.location if player else self._player_location
+            held = self._find_item(player.contents, resolved_arg) if player is not None else None
+            if held is not None:
+                response = f"It is {held.description}."
+                matched = True
+            else:
+                target_player = next((p for p in self._players.values()
+                                      if (room is None or p.location is room) and p.name.lower() == resolved_arg), None)
+                if target_player is not None:
+                    response = f"{target_player.name} is here, exploring the world."
+                    matched = True
+                else:
+                    response = f"You see no {resolved_arg} here."
                     matched = True
 
         # SOCIAL / UTILITY

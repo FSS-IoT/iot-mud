@@ -109,6 +109,20 @@ async def _handshake(uri):
     return ws
 
 
+async def _read_until(websocket, event_type):
+    """Read messages until one of `event_type` arrives, returning that message.
+
+    A player now receives a `room_state` on join (so even a solo player sees their
+    room immediately), so the first post-join message is not always the broadcast we
+    are waiting for; skip any earlier messages rather than assuming order.
+    """
+    while True:
+        raw = await asyncio.wait_for(websocket.recv(), timeout=3.0)
+        msg = json.loads(raw)
+        if msg["type"] == event_type:
+            return msg
+
+
 @pytest.mark.asyncio
 async def test_newcomer_is_told_about_existing_occupant(running_server):
     """Ada joins first; when Ben joins, Ben must learn that Ada is present."""
@@ -125,8 +139,7 @@ async def test_newcomer_is_told_about_existing_occupant(running_server):
     await ben.send(json.dumps({"v": 1, "type": "join", "id": 1,
                                "data": {"name": "Ben"}}))
     # Ben should receive an event naming the pre-existing occupant Ada.
-    raw = await asyncio.wait_for(ben.recv(), timeout=3.0)
-    event = json.loads(raw)
+    event = await _read_until(ben, "player_joined")
 
     assert event["type"] == "player_joined"
     assert event["data"]["name"] == "Ada"
@@ -147,9 +160,8 @@ async def test_existing_occupant_is_told_about_newcomer(running_server):
     await ben.send(json.dumps({"v": 1, "type": "join", "id": 1,
                                "data": {"name": "Ben"}}))
 
-    # Ada should receive a player_joined naming Ben.
-    raw = await asyncio.wait_for(ada.recv(), timeout=3.0)
-    event = json.loads(raw)
+    # Ada should receive a player_joined naming Ben (skip any buffered room_state).
+    event = await _read_until(ada, "player_joined")
 
     assert event["type"] == "player_joined"
     assert event["data"]["name"] == "Ben"

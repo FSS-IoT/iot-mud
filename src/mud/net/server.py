@@ -3,6 +3,7 @@ import json
 import logging
 import websockets
 from typing import Any, Callable, Dict, List
+from src.mud.content import Player, Room
 from src.mud.engine.core import Engine
 
 # Setup logging
@@ -111,6 +112,37 @@ class MudServer:
             if other.name == name:
                 continue
             await self._send_to_player(name, "player_joined", other.name)
+
+        # Give the newcomer a full picture of their room on join — description,
+        # items, and occupants — so they see the world without typing `look`.
+        await self._send_room_state(websocket, name)
+
+    async def _send_room_state(self, websocket, name: str) -> None:
+        """Send a `room_state` event describing the player's current room."""
+        player = self.engine.get_player(name)
+        if player is None or player.location is None:
+            return
+        room = player.location
+
+        items = [c for c in room.contents if not isinstance(c, Player)]
+        occupants = [p.name for p in self.engine.players_in_room(room)]
+
+        message = {
+            "v": 1,
+            "type": "room_state",
+            "event_id": f"room_state-{int(asyncio.get_event_loop().time()*1000)}",
+            "seq": 0,
+            "data": {
+                "name": room.name,
+                "description": room.description,
+                "items": [c.name for c in items],
+                "occupants": occupants,
+            },
+        }
+        try:
+            await websocket.send(json.dumps(message))
+        except websockets.exceptions.ConnectionClosed:
+            pass
 
     async def _send_to_player(self, name: str, event_type: str, actor_name: str) -> None:
         """Send an event to a single named player's socket (or nothing if offline)."""

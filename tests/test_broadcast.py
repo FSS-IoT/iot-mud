@@ -68,6 +68,19 @@ async def _join(websocket, name):
     await websocket.send(json.dumps(payload))
 
 
+async def _read_until(websocket, event_type):
+    """Read messages until one of `event_type` arrives, returning that message.
+
+    A player now receives a `room_state` on join (so even a solo player sees their
+    room immediately), so the first post-join message is not always the broadcast
+    we are waiting for. Skip any earlier messages rather than assuming order.
+    """
+    while True:
+        msg = await _read(websocket)
+        if msg["type"] == event_type:
+            return msg
+
+
 @pytest.mark.asyncio
 async def test_joining_player_is_notified_of_new_occupant(running_server):
     """When Ben joins a room that Ada already occupies, Ada gets `player_joined`."""
@@ -75,12 +88,12 @@ async def test_joining_player_is_notified_of_new_occupant(running_server):
     uri = f"ws://localhost:{server.port}"
 
     ada = await _connect_and_handshake(uri)
-    await _join(ada, "Ada")  # Ada alone at Village Gate -> no broadcast yet
+    await _join(ada, "Ada")  # Ada alone at Village Gate -> room_state, no broadcast yet
 
     ben = await _connect_and_handshake(uri)
     await _join(ben, "Ben")  # Ben joins the same room
 
-    event = await _read(ada)  # Ada should receive notification about Ben
+    event = await _read_until(ada, "player_joined")  # Ada should receive notification about Ben
 
     assert event["type"] == "player_joined"
     assert event["data"]["name"] == "Ben"
@@ -98,12 +111,12 @@ async def test_leaving_player_is_notified_of_departure(running_server):
     ben = await _connect_and_handshake(uri)
     await _join(ben, "Ben")
 
-    # Consume Ada's player_joined for Ben first, then trigger Ben's disconnect.
-    joined = await _read(ada)
+    # Ada may have a buffered room_state from her own join; skip to her player_joined.
+    joined = await _read_until(ada, "player_joined")
     assert joined["type"] == "player_joined"
     await ben.close()
 
-    event = await _read(ada)  # Ada should receive notification that Ben left
+    event = await _read_until(ada, "player_left")  # Ada should receive notification that Ben left
 
     assert event["type"] == "player_left"
     assert event["data"]["name"] == "Ben"
@@ -120,7 +133,7 @@ async def test_commands_still_work_after_registration(running_server):
 
     payload = {"v": 1, "type": "input", "id": 5, "data": {"text": "look"}}
     await ada.send(json.dumps(payload))
-    reply = await _read(ada)
+    reply = await _read_until(ada, "command_reply")
 
     assert reply["type"] == "command_reply"
     assert reply["seq"] == payload["id"]

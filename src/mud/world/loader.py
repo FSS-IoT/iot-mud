@@ -63,8 +63,8 @@ async def load_demo_village(engine: Engine) -> None:
     if start_room_id in room_map:
         engine._player_location = room_map[start_room_id]
     
-    # Spawn dummy player
-    player = Entity("Adventurer", "A traveler passing through.")
-    engine.player = player
-    if engine._player_location:
-        engine._player_location.add_content(player)
+    # Spawn legacy single-player placeholder. It is kept on the engine for
+    # backward compatibility but must NOT be added to a room's contents: it is
+    # not a real item, and showing up as one would make `look` report "Here you
+    # see: Adventurer" — confusing phantom clutter in an otherwise empty start room.
+    engine.player = Entity("Adventurer", "A traveler passing through.")
