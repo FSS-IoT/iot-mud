@@ -29,7 +29,8 @@ async def load_demo_village(engine: Engine) -> None:
         item = Entity(
             name=i_data["name"],
             description=i_data["description"],
-            weight=float(i_data.get("weight", 0.0))
+            weight=float(i_data.get("weight", 0.0)),
+            readable=bool(i_data.get("readable", False))
         )
         item_map[i_data["id"]] = item
 

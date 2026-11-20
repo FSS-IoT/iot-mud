@@ -145,15 +145,43 @@ async def test_examine_room_item_not_held():
 
 
 # ---------------------------------------------------------------------------
-# read resolves to examine (signs, books)
+# read is gated to readable objects (signs, books), not arbitrary items
 # ---------------------------------------------------------------------------
 
+def _setup_sign_and_coin():
+    """A room with a readable sign and a plain coin on the floor."""
+    engine = Engine()
+    room = Room("Village Gate", "A heavy stone gate stands tall.")
+    room.add_content(Entity("Notice Board", "A weathered sign nailed to the gate.", readable=True))
+    room.add_content(Entity("Gold Coin", "A shiny, minted copper coin.", weight=0.01))
+    engine._rooms["Village Gate"] = room
+    engine._player_location = room
+    engine.register_player("Ada")
+    return engine
+
+
 @pytest.mark.asyncio
-async def test_read_resolves_to_examine():
-    """`read gold coin` describes the item like `examine` would."""
-    engine = _setup()
+async def test_read_readable_object_describes_it():
+    """`read the notice board` describes a readable object."""
+    engine = _setup_sign_and_coin()
+    response = await engine.process_command("read the notice board", "Ada")
+    assert "weathered" in response.lower()
+
+
+@pytest.mark.asyncio
+async def test_read_nonreadable_object_is_rejected():
+    """`read gold coin` is refused: a plain item is not something to read."""
+    engine = _setup_sign_and_coin()
     response = await engine.process_command("read gold coin", "Ada")
-    assert "shiny" in response.lower()
+    assert "nothing readable" in response.lower()
+
+
+@pytest.mark.asyncio
+async def test_read_missing_object_is_rejected():
+    """`read dragon` (no such object) is refused, not misread as 'nothing here'."""
+    engine = _setup_sign_and_coin()
+    response = await engine.process_command("read dragon", "Ada")
+    assert "nothing readable" in response.lower()
 
 
 # ---------------------------------------------------------------------------

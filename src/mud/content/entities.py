@@ -3,10 +3,14 @@ from typing import Dict, Optional, List
 
 class Entity:
     """Base class for everything in the world: Players, Items, Rooms."""
-    def __init__(self, name: str, description: str, weight: float = 0.0):
+    def __init__(self, name: str, description: str, weight: float = 0.0,
+                 readable: bool = False):
         self.name = name
         self.description = description
         self.weight = weight
+        # `readable` marks objects a player can `read` (signs, books, scrolls).
+        # Plain items are not; `read <item>` is refused for them.
+        self.readable = readable
         self.contents: List[Entity] = []
 
     def add_content(self, item: Entity) -> bool:

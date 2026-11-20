@@ -152,6 +152,33 @@ class Engine:
             return []
         return sorted(c.name for c in entity.contents)
 
+    def _find_target(self, player, room, arg: str):
+        """Resolve the entity named `arg` for the `examine` / `read` verbs.
+
+        Returns a tuple `(item, player_target)`:
+          * `item` is the held or room Entity matching `arg` (or None when no such
+            physical object exists).
+          * `player_target` is a named Player sharing the room (or None).
+
+        Physical items are matched before people so `read`/`examine X` never
+        accidentally describes a player. Players are excluded from the room-item
+        scan because they live in `room.contents` too.
+        """
+        held = self._find_item(player.contents, arg) if player is not None else None
+        if held is not None:
+            return held, None
+
+        room_items = [c for c in (room.contents if room is not None else [])
+                      if not isinstance(c, Player)]
+        room_item = self._find_item(room_items, arg)
+        if room_item is not None:
+            return room_item, None
+
+        player_target = next((p for p in self._players.values()
+                              if (room is None or p.location is room)
+                              and p.name.lower() == arg), None)
+        return None, player_target
+
     async def _handle_take(self, arg: str, player_name: Optional[str]) -> str:
         """Move an item named `arg` from the player's room into their inventory.
 
@@ -284,8 +311,6 @@ class Engine:
             "i": "inventory", "inv": "inventory",
             "h": "help",
             "exam": "examine",
-            # `read` is how a player approaches a sign or book; treat it as examine.
-            "read": "examine",
         }
         
         # `look at X` is a common way to focus on something; treat it as `examine X`.
@@ -409,34 +434,41 @@ class Engine:
 
         # EXAMINE / LOOK AT — hold first, then room contents (not just players).
         elif resolved_verb == "examine" and resolved_arg:
-            # Focus on a specific entity the player can hold or see. The verb is
-            # `examine X` or `look at X`; both arrive here with verb "examine".
-            # Prefer an item the examiner holds; otherwise describe a named player in
-            # the room (the target's presence does not depend on the examiner being registered).
+            # Focus on a specific entity the player can hold or see. `examine X`
+            # and `look at X` both arrive here with verb "examine". Prefer an item
+            # the examiner holds; otherwise describe a physical item on the floor,
+            # then a named player in the room (whose presence does not depend on
+            # the examiner being registered).
             player = self._resolve_player(player_name)
             room = player.location if player is not None else self._player_location
-            held = self._find_item(player.contents, resolved_arg) if player is not None else None
-            if held is not None:
-                response = f"It is {held.description}."
+            item, target_player = self._find_target(player, room, resolved_arg)
+            if item is not None:
+                response = f"It is {item.description}."
+                matched = True
+            elif target_player is not None:
+                response = f"{target_player.name} is here, exploring the world."
                 matched = True
             else:
-                # A physical item on the floor, before any named occupant. Players
-                # live in room.contents too, so skip them here (handled below).
-                room_items = [c for c in (room.contents if room is not None else [])
-                              if not isinstance(c, Player)]
-                room_item = self._find_item(room_items, resolved_arg)
-                if room_item is not None:
-                    response = f"It is {room_item.description}."
-                    matched = True
-                else:
-                    target_player = next((p for p in self._players.values()
-                                          if (room is None or p.location is room) and p.name.lower() == resolved_arg), None)
-                    if target_player is not None:
-                        response = f"{target_player.name} is here, exploring the world."
-                        matched = True
-                    else:
-                        response = f"You see no {resolved_arg} here."
-                        matched = True
+                response = f"You see no {resolved_arg} here."
+                matched = True
+
+        # READ — like examine, but only readable objects (signs, books). Plain
+        # items are not something to read, so `read <item>` is refused rather
+        # than describing it. Shares the hold/floor/player resolution above.
+        elif resolved_verb == "read" and resolved_arg:
+            player = self._resolve_player(player_name)
+            room = player.location if player is not None else self._player_location
+            item, target_player = self._find_target(player, room, resolved_arg)
+            if item is not None and item.readable:
+                response = f"It is {item.description}."
+                matched = True
+            elif target_player is not None:
+                # A player is never something to read.
+                response = f"You can't read {target_player.name}."
+                matched = True
+            else:
+                response = "There is nothing readable here."
+                matched = True
 
         # INVENTORY / HELP (UTILITY)
         elif resolved_verb == "inventory":
@@ -450,7 +482,7 @@ class Engine:
         elif resolved_verb == "help":
             response = (
                 "Commands: look (l), go <direction>, exits, take <item>, drop <item>, "
-                "examine <thing> (exam), inventory (i), say <text>, hello. Try `look` first."
+                "examine <thing> (exam), read <thing> (signs, books), inventory (i), say <text>, hello. Try `look` first."
             )
             matched = True
 

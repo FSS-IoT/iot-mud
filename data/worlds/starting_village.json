@@ -8,7 +8,7 @@
       "exits": {
         "north": "market"
       },
-      "item_ids": []
+      "item_ids": ["sign"]
     },
     {
       "id": "market",
@@ -55,6 +55,13 @@
       "name": "Gold Coin",
       "description": "A shiny, minted copper coin.",
       "weight": 0.01
+    },
+    {
+      "id": "sign",
+      "name": "Village Sign",
+      "description": "A wooden signpost. The arrows point North to the Marketplace and West to the Old Tavern.",
+      "weight": 0.2,
+      "readable": true
     },
     {
       "id": "torch",
