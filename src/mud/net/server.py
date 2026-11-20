@@ -135,8 +135,18 @@ class MudServer:
         player = self.engine.get_player(name)
         if player is None or player.location is None:
             return
-        for other in self.engine.players_in_room(player.location):
-            if other.name == name:
+        await self._notify_room(player.location, event_type, name)
+
+    async def _notify_room(self, room, event_type: str, actor_name: str) -> None:
+        """Send an event to every live player in `room` except the actor.
+
+        Takes an explicit room so callers can notify a room even after the actor's
+        location has already changed (e.g. right after moving).
+        """
+        if room is None:
+            return
+        for other in self.engine.players_in_room(room):
+            if other.name == actor_name:
                 continue
             target = next((ws for ws, ws_name in self._ws_to_player.items()
                            if ws_name == other.name), None)
@@ -147,15 +157,47 @@ class MudServer:
                 "type": event_type,
                 "event_id": f"{event_type}-{int(asyncio.get_event_loop().time()*1000)}",
                 "seq": 0,
-                "data": {"name": name},
+                "data": {"name": actor_name},
             }
             try:
                 await target.send(json.dumps(message))
             except websockets.exceptions.ConnectionClosed:
                 pass
 
+    async def _handle_player_moved(self, event_type: str, data) -> None:
+        """React to a `player_moved` semantic event by broadcasting position change.
+
+        The departing room loses the player (`player_left`) and the arriving room
+        gains them (`player_joined`). We must notify the *arriving* room before or
+        independent of removing the player from the old room, so we compute both
+        rooms up front.
+        """
+        name = data["name"]
+        player = self.engine.get_player(name)
+        if player is None:
+            return
+
+        # The event carries the old room by name; the new room is wherever the
+        # player's location points now (after a move, that's already updated).
+        old_room = self.engine.get_room(data["from"])
+        new_room = player.location
+
+        # Notify everyone still in the old room that the player left.
+        await self._notify_room(old_room, "player_left", name)
+
+        # Move the player's presence to the new room, then notify its occupants.
+        if old_room is not None and old_room is not new_room:
+            old_room.remove_content(player)
+            if new_room is not None:
+                new_room.add_content(player)
+
+        await self._notify_room(new_room, "player_joined", name)
+
     async def run(self) -> None:
         """Starts the WebSocket server."""
+        # React to registered players moving so position changes reach the rooms
+        # affected by each move (see _handle_player_moved).
+        await self.engine.subscribe("player_moved", self._handle_player_moved)
         self._server = await websockets.serve(self.handler, self.host, self.port)
         await self._stop_event.wait()
         if self._server:

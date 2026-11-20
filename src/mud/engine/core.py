@@ -67,6 +67,47 @@ class Engine:
             return []
         return [p for p in self._players.values() if p.location is room]
 
+    async def move_player(self, name: str, direction: str) -> tuple[bool, str]:
+        """Move a *registered* player one step in `direction`, if an exit allows.
+
+        Returns a `(moved, result)` tuple: on success `moved` is True and `result`
+        is the destination room name; on failure `moved` is False and `result` is
+        the refusal string (the player stays put). Emits a semantic `player_moved`
+        event carrying name / from / to so the network layer can broadcast position
+        changes to the affected rooms.
+        """
+        player = self.get_player(name)
+        if player is None or player.location is None:
+            return False, ""
+
+        exit_name = direction.strip().lower()
+        destination = player.location.exits.get(exit_name)
+        if not isinstance(destination, Room):
+            return False, f"You cannot go {exit_name}."
+
+        old_name = player.location.name
+        player.location.remove_content(player)
+        player.location = destination
+        destination.add_content(player)
+
+        await self.emit("player_moved", {
+            "name": name, "from": old_name, "to": destination.name,
+        })
+        return True, destination.name
+
+    @staticmethod
+    def _describe_movement(destination: Room, direction: str, old_location=None) -> str:
+        """Render the standard movement prose for arriving at `destination`."""
+        old_name = old_location.name if old_location is not None else "the previous room"
+        exits_list = [e.capitalize() for e in destination.exits.keys()]
+        exit_str = f"Exits lead {', '.join(exits_list)}."
+        return (
+            f"You travel towards {destination.name}.\n"
+            f"(Prose: You leave the {old_name}).\n\n"
+            f"{destination.description}\n"
+            f"{exit_str}"
+        )
+
     async def subscribe(self, event_type: str, callback: Callable) -> None:
         """Registers a listener for semantic events."""
         if event_type not in self._subscribers:
@@ -180,19 +221,38 @@ class Engine:
 
         # MOVEMENT
         elif resolved_verb == "go" and resolved_arg:
-            if not self._player_location:
+            direction = resolved_arg.strip()
+            registered_player = self.get_player(player_name) if player_name else None
+
+            # Multiplayer path: move the registered, named player. This is what a
+            # socket-bound client drives; it keeps that player's location in sync
+            # with the world so `look` and broadcasts reflect real movement.
+            if registered_player is not None:
+                old_location = registered_player.location
+                moved, result = await self.move_player(player_name, direction)
+                if moved:
+                    response = self._describe_movement(
+                        registered_player.location, direction, old_location=old_location,
+                    )
+                    matched = True
+                else:
+                    response = result  # refusal string, e.g. "You cannot go south."
+                    matched = True
+
+            # Legacy single-player path (no player_name): unchanged behavior.
+            elif not self._player_location:
                 response = "You have no presence here to move."
                 matched = True
             else:
-                destination = self._player_location.exits.get(resolved_arg.strip())
+                destination = self._player_location.exits.get(direction)
                 if isinstance(destination, Room):
                     old_name = self._player_location.name
                     self._player_location = destination
-                    
+
                     # Auto-describe destination + exits list
                     exits_list = [e.capitalize() for e in destination.exits.keys()]
                     exit_str = f"Exits lead {', '.join(exits_list)}."
-                    
+
                     response = (
                         f"You travel towards {destination.name}.\n"
                         f"(Prose: You leave the {old_name}).\n\n"
@@ -203,7 +263,7 @@ class Engine:
                     # Signal World Change
                     await self.emit("room_change", {"from": old_name, "to": destination.name, "desc": destination.description})
                 else:
-                    response = f"You cannot go {resolved_arg}."
+                    response = f"You cannot go {direction}."
                     matched = True
 
         # INTERACTION (Items)
