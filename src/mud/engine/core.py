@@ -97,16 +97,32 @@ class Engine:
 
     @staticmethod
     def _describe_movement(destination: Room, direction: str, old_location=None) -> str:
-        """Render the standard movement prose for arriving at `destination`."""
+        """Render the standard movement prose for arriving at `destination`.
+
+        The reply is the single source of truth for what the mover sees on arrival:
+        travel prose, destination description, exits, and any items in the room.
+        A separate `room_state` push on move is intentionally NOT used here because
+        it would duplicate this reply (one with contents, one without).
+        """
         old_name = old_location.name if old_location is not None else "the previous room"
         exits_list = [e.capitalize() for e in destination.exits.keys()]
         exit_str = f"Exits lead {', '.join(exits_list)}."
-        return (
+
+        response = (
             f"You travel towards {destination.name}.\n"
             f"(Prose: You leave the {old_name}).\n\n"
             f"{destination.description}\n"
             f"{exit_str}"
         )
+
+        # Show items in the room the mover just entered. Items are physical objects
+        # in the room, so list them from the destination's contents directly.
+        items = [c for c in destination.contents if not isinstance(c, Player)]
+        if items:
+            listed = ", ".join(sorted(c.name for c in items))
+            response += f"\n\nHere you see: {listed}."
+
+        return response
 
     @staticmethod
     def _find_item(collection, arg: str):
@@ -272,22 +288,15 @@ class Engine:
             else:
                 destination = self._player_location.exits.get(direction)
                 if isinstance(destination, Room):
-                    old_name = self._player_location.name
+                    prev_location = self._player_location
                     self._player_location = destination
 
-                    # Auto-describe destination + exits list
-                    exits_list = [e.capitalize() for e in destination.exits.keys()]
-                    exit_str = f"Exits lead {', '.join(exits_list)}."
-
-                    response = (
-                        f"You travel towards {destination.name}.\n"
-                        f"(Prose: You leave the {old_name}).\n\n"
-                        f"{destination.description}\n"
-                        f"{exit_str}"
+                    response = self._describe_movement(
+                        destination, direction, old_location=prev_location,
                     )
                     matched = True
                     # Signal World Change
-                    await self.emit("room_change", {"from": old_name, "to": destination.name, "desc": destination.description})
+                    await self.emit("room_change", {"from": prev_location.name, "to": destination.name, "desc": destination.description})
                 else:
                     response = f"You cannot go {direction}."
                     matched = True

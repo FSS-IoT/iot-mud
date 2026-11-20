@@ -220,5 +220,46 @@ async def test_move_broadcasts_joined_to_arriving_room(running_server):
     await ben.close()
 
 
+@pytest.mark.asyncio
+async def test_mover_receives_room_contents_via_reply(running_server):
+    """Moving carries room contents in the `go` reply, with no redundant push.
+
+    The `go` reply is the single source of truth for what a mover sees on arrival:
+    travel prose, destination description, exits, and items. A separate `room_state`
+    push from the server would duplicate that reply (both describing the same room),
+    so it must not be sent. This test fails until (a) the reply carries contents AND
+    (b) no redundant `room_state` arrives between the command and its reply.
+    """
+    server, _ = running_server
+    uri = f"ws://localhost:{server.port}"
+
+    ada = await FakeClient(uri).connect()
+    await ada.join("Ada")
+
+    # Ada starts at the Village Gate (no items); she already got a room_state for it.
+    assert (await ada.next_event("room_state"))["data"]["name"] == "Village Gate"
+
+    # Ada moves north into the Marketplace, where a Gold Coin is present.
+    await ada.input("go north", 1)
+
+    # Drain messages until our command_reply for id 1 arrives, asserting no
+    # redundant market room_state was pushed in between.
+    reply = None
+    while reply is None:
+        ev = await asyncio.wait_for(ada.q.get(), timeout=3.0)
+        if ev["type"] == "room_state" and ev["data"]["name"] == "Marketplace":
+            raise AssertionError(
+                "Server pushed a redundant room_state on move; the go reply is the "
+                "single source of truth for what the mover sees."
+            )
+        if ev["type"] == "command_reply" and ev["seq"] == 1:
+            reply = ev
+
+    text = reply["data"]["text"].lower()
+    assert "marketplace" in text
+    # The mover sees the items via the reply itself.
+    assert "gold coin" in text
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
