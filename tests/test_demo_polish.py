@@ -145,6 +145,18 @@ async def test_examine_room_item_not_held():
 
 
 # ---------------------------------------------------------------------------
+# read resolves to examine (signs, books)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_read_resolves_to_examine():
+    """`read gold coin` describes the item like `examine` would."""
+    engine = _setup()
+    response = await engine.process_command("read gold coin", "Ada")
+    assert "shiny" in response.lower()
+
+
+# ---------------------------------------------------------------------------
 # fallback reads as helpful prose, never the raw sentinel
 # ---------------------------------------------------------------------------
 

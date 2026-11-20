@@ -284,6 +284,8 @@ class Engine:
             "i": "inventory", "inv": "inventory",
             "h": "help",
             "exam": "examine",
+            # `read` is how a player approaches a sign or book; treat it as examine.
+            "read": "examine",
         }
         
         # `look at X` is a common way to focus on something; treat it as `examine X`.
