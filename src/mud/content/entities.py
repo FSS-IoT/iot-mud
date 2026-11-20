@@ -4,13 +4,17 @@ from typing import Dict, Optional, List
 class Entity:
     """Base class for everything in the world: Players, Items, Rooms."""
     def __init__(self, name: str, description: str, weight: float = 0.0,
-                 readable: bool = False):
+                 readable: bool = False, light_source: bool = False):
         self.name = name
         self.description = description
         self.weight = weight
         # `readable` marks objects a player can `read` (signs, books, scrolls).
         # Plain items are not; `read <item>` is refused for them.
         self.readable = readable
+        # `light_source` marks an object that sheds light — a Torch, a lantern.
+        # Carried by a player it lights wherever they stand; it makes a dark
+        # room visible.
+        self.light_source = light_source
         self.contents: List[Entity] = []
 
     def add_content(self, item: Entity) -> bool:
@@ -39,6 +43,15 @@ class Player(Entity):
 
 class Room(Entity):
     """A location where entities can reside."""
-    def __init__(self, name: str, description: str, exits: Optional[Dict[str, Room]] = None):
+    def __init__(self, name: str, description: str, exits: Optional[Dict[str, Room]] = None,
+                 light_source: Entity | None = None, dark: bool = False):
         super().__init__(name, description)
         self.exits = exits or {}
+        # A fixed light in the room (a wall lantern, a brazier). None means the
+        # room has no built-in light. Kept as an Entity so it can itself be
+        # carried (a portable light) or inspected.
+        self.light_source = light_source
+        # `dark` marks a room that is unlit unless a light source is present
+        # (in the room or carried by the observer). The default is a LIT room,
+        # so the demo world stays lit until a room opts into darkness.
+        self.dark = dark

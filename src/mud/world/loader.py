@@ -30,7 +30,8 @@ async def load_demo_village(engine: Engine) -> None:
             name=i_data["name"],
             description=i_data["description"],
             weight=float(i_data.get("weight", 0.0)),
-            readable=bool(i_data.get("readable", False))
+            readable=bool(i_data.get("readable", False)),
+            light_source=bool(i_data.get("light_source", False)),
         )
         item_map[i_data["id"]] = item
 
@@ -38,19 +39,27 @@ async def load_demo_village(engine: Engine) -> None:
     for r_data in data.get("rooms", []):
         room = Room(
             name=r_data["name"],
-            description=r_data["description"]
+            description=r_data["description"],
+            dark=bool(r_data.get("dark", False)),
         )
         room_map[r_data["id"]] = room
 
     # 3. Third pass: Establish interconnections (Exits) and Inventory
     for r_data in data.get("rooms", []):
         current_room = room_map[r_data["id"]]
-        
+
         # Handle exits (mapping string key to actual Room object)
         for exit_name, target_room_id in r_data.get("exits", {}).items():
             if target_room_id in room_map:
                 current_room.exits[exit_name] = room_map[target_room_id]
-        
+
+        # Handle a fixed light source in the room, if any. The value is the id of
+        # an item (built in pass 1); that item sheds light on the room so it is
+        # never dark. It is added to the room's contents as its light.
+        light_id = r_data.get("light_source")
+        if light_id and light_id in item_map:
+            current_room.light_source = item_map[light_id]
+
         # Handle items in room
         for item_id in r_data.get("item_ids", []):
             if item_id in item_map:

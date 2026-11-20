@@ -118,14 +118,18 @@ class MudServer:
         await self._send_room_state(websocket, name)
 
     async def _send_room_state(self, websocket, name: str) -> None:
-        """Send a `room_state` event describing the player's current room."""
+        """Send a `room_state` event describing the player's current room.
+
+        The engine is authoritative over what a player can see, so the view is
+        built by `engine.visible_room_state` (which encodes the darkness rules)
+        rather than reconstructed here from raw room contents. This keeps the
+        server a dumb terminal: it never re-derives visibility.
+        """
         player = self.engine.get_player(name)
         if player is None or player.location is None:
             return
-        room = player.location
 
-        items = [c for c in room.contents if not isinstance(c, Player)]
-        occupants = [p.name for p in self.engine.players_in_room(room)]
+        view = self.engine.visible_room_state(player)
 
         message = {
             "v": 1,
@@ -133,10 +137,10 @@ class MudServer:
             "event_id": f"room_state-{int(asyncio.get_event_loop().time()*1000)}",
             "seq": 0,
             "data": {
-                "name": room.name,
-                "description": room.description,
-                "items": [c.name for c in items],
-                "occupants": occupants,
+                "name": view["name"],
+                "description": view["description"],
+                "items": view["items"],
+                "occupants": view["occupants"],
             },
         }
         try:

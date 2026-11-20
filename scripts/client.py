@@ -30,6 +30,8 @@ def render_message(message: dict, name: str) -> str:
         description = data.get("description")
         if description:
             out += "\n" + description
+        if data.get("dark"):
+            return out + f"{CLEAR}\nIt is too dark to see anything.\n"
         items = data.get("items") or []
         if items:
             out += f"\nHere you see: {', '.join(items)}."

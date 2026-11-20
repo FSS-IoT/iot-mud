@@ -65,6 +65,21 @@ def test_room_state_without_items_or_occupants_has_no_clutter():
     assert "Others in the room:" not in out
 
 
+def test_dark_room_state_renders_darkness_line():
+    """A `room_state` flagged `dark` shows the darkness line and nothing else.
+
+    The engine hides items and occupants in a dark room; the renderer must not
+    invent a 'Here you see' line for contents the player cannot perceive.
+    """
+    msg = _room_state("Mysterious Forest", "Trees loom high above.", [], [])
+    msg["data"]["dark"] = True
+    out = render_message(msg, "Doc")
+
+    assert "dark" in out.lower()
+    assert "Here you see:" not in out
+    assert "Others in the room:" not in out
+
+
 def test_player_joined_renders_named_join():
     """A `player_joined` event renders a friendly join notice."""
     msg = {"v": 1, "type": "player_joined", "event_id": "x", "seq": 0,

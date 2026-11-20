@@ -43,6 +43,7 @@
       "id": "forest",
       "name": "Mysterious Forest",
       "description": "Trees loom high above, blocking much of the sun.",
+      "dark": true,
       "exits": {
         "south": "market"
       },
@@ -67,7 +68,8 @@
       "id": "torch",
       "name": "Torch",
       "description": "A flickering wooden torch.",
-      "weight": 0.5
+      "weight": 0.5,
+      "light_source": true
     },
     {
       "id": "bread",

@@ -152,6 +152,54 @@ class Engine:
             return []
         return sorted(c.name for c in entity.contents)
 
+    def _room_is_lit(self, player, room) -> bool:
+        """Whether `room` is lit from the perspective of `player` (or legacy slot).
+
+        A room is lit unless it is explicitly marked `dark`. A dark room is lit
+        if it carries a light source, or if the observer carries one (a Torch,
+        a lantern). The default is a LIT room: no explicit darkness means the
+        lights are effectively on.
+        """
+        if room is None or (isinstance(room, Room) and not room.dark):
+            return True
+        if isinstance(room, Room) and room.light_source is not None:
+            return True
+        observer = player if player is not None else self.player
+        return observer is not None and any(
+            getattr(c, "light_source", False) for c in observer.contents
+        )
+
+    def visible_room_state(self, player) -> Dict[str, Any]:
+        """The view of the player's current room, ready to render.
+
+        This is the single source of truth for what a player sees in their room
+        — the room description, visible items, and visible occupants. It
+        encodes the visibility rules (darkness) so the server terminal can
+        render `room_state` without duplicating them: a dark room with no light
+        reports its name and darkness but hides every item and occupant the
+        player cannot see.
+        """
+        room = player.location if player is not None else self._player_location
+        dark = isinstance(room, Room) and room.dark and not self._room_is_lit(player, room)
+        if dark:
+            return {
+                "name": room.name if room is not None else "",
+                "description": room.description if room is not None else "",
+                "dark": True,
+                "items": [],
+                "occupants": [],
+            }
+        items = sorted(c.name for c in room.contents if not isinstance(c, Player))
+        occupants = sorted(p.name for p in self._players.values()
+                           if p.location is room and p is not player)
+        return {
+            "name": room.name if room is not None else "",
+            "description": room.description if room is not None else "",
+            "dark": False,
+            "items": items,
+            "occupants": occupants,
+        }
+
     def _find_target(self, player, room, arg: str):
         """Resolve the entity named `arg` for the `examine` / `read` verbs.
 
@@ -344,20 +392,24 @@ class Engine:
             target_player = self.get_player(player_name) if player_name else None
             room = target_player.location if target_player is not None else self._player_location
             if room:
-                response = room.description
-                # Items are everything in the room that is not a player; players
-                # get their own line below. This makes items visible without
-                # guessing the exact take/drop command.
-                items = [c for c in room.contents if not isinstance(c, Player)]
-                if items:
-                    listed = ", ".join(sorted(c.name for c in items))
-                    response += f"\n\nHere you see: {listed}."
-                occupants = [p for p in self._players.values()
-                             if p.location is room and p.name != player_name]
-                if occupants:
-                    listed = ", ".join(p.name for p in sorted(occupants))
-                    response += f"\n\nOthers in the room: {listed}."
-                matched = True
+                if not self._room_is_lit(target_player, room):
+                    response = "It is too dark to see anything."
+                    matched = True
+                else:
+                    response = room.description
+                    # Items are everything in the room that is not a player; players
+                    # get their own line below. This makes items visible without
+                    # guessing the exact take/drop command.
+                    items = [c for c in room.contents if not isinstance(c, Player)]
+                    if items:
+                        listed = ", ".join(sorted(c.name for c in items))
+                        response += f"\n\nHere you see: {listed}."
+                    occupants = [p for p in self._players.values()
+                                 if p.location is room and p.name != player_name]
+                    if occupants:
+                        listed = ", ".join(p.name for p in sorted(occupants))
+                        response += f"\n\nOthers in the room: {listed}."
+                    matched = True
             else:
                 response = "You feel lost in a void."
                 matched = True
@@ -442,7 +494,10 @@ class Engine:
             player = self._resolve_player(player_name)
             room = player.location if player is not None else self._player_location
             item, target_player = self._find_target(player, room, resolved_arg)
-            if item is not None:
+            if not self._room_is_lit(player, room):
+                response = "It is too dark to see anything."
+                matched = True
+            elif item is not None:
                 response = f"It is {item.description}."
                 matched = True
             elif target_player is not None:
@@ -459,7 +514,10 @@ class Engine:
             player = self._resolve_player(player_name)
             room = player.location if player is not None else self._player_location
             item, target_player = self._find_target(player, room, resolved_arg)
-            if item is not None and item.readable:
+            if not self._room_is_lit(player, room):
+                response = "It is too dark to see anything."
+                matched = True
+            elif item is not None and item.readable:
                 response = f"It is {item.description}."
                 matched = True
             elif target_player is not None:
