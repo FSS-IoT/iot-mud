@@ -209,27 +209,56 @@ class MudServer:
         if player is None:
             return
 
+        # The engine is the authoritative brain: it has already moved the player
+        # (updated `.location` and the room contents) before emitting. The server
+        # is just a terminal here — it reacts by broadcasting, never by mutating.
         # The event carries the old room by name; the new room is wherever the
         # player's location points now (after a move, that's already updated).
         old_room = self.engine.get_room(data["from"])
         new_room = player.location
 
-        # Notify everyone still in the old room that the player left.
+        # Notify everyone still in the old room that the player left, then the
+        # arriving room that they have joined. No content mutation on our side.
         await self._notify_room(old_room, "player_left", name)
-
-        # Move the player's presence to the new room, then notify its occupants.
-        if old_room is not None and old_room is not new_room:
-            old_room.remove_content(player)
-            if new_room is not None:
-                new_room.add_content(player)
-
         await self._notify_room(new_room, "player_joined", name)
+
+    async def _handle_player_said(self, event_type: str, data) -> None:
+        """React to a `player_said` semantic event by broadcasting to roommates.
+
+        The engine owns the speaker's location; we only relay the message to
+        everyone else currently in the same room (no content mutation).
+        """
+        name = data["name"]
+        player = self.engine.get_player(name)
+        if player is None or player.location is None:
+            return
+        message = {
+            "v": 1,
+            "type": "player_said",
+            "event_id": f"player_said-{int(asyncio.get_event_loop().time()*1000)}",
+            "seq": 0,
+            "data": {"name": name, "text": data.get("text", "")},
+        }
+        for other in self.engine.players_in_room(player.location):
+            if other.name == name:
+                continue
+            target = next((ws for ws, ws_name in self._ws_to_player.items()
+                           if ws_name == other.name), None)
+            if target is None:
+                continue
+            try:
+                await target.send(json.dumps(message))
+            except websockets.exceptions.ConnectionClosed:
+                pass
 
     async def run(self) -> None:
         """Starts the WebSocket server."""
         # React to registered players moving so position changes reach the rooms
         # affected by each move (see _handle_player_moved).
         await self.engine.subscribe("player_moved", self._handle_player_moved)
+        # React to a player speaking so the message reaches everyone else in the
+        # room (see _handle_player_said).
+        await self.engine.subscribe("player_said", self._handle_player_said)
         self._server = await websockets.serve(self.handler, self.host, self.port)
         await self._stop_event.wait()
         if self._server:

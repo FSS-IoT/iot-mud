@@ -488,9 +488,16 @@ class Engine:
 
         # SOCIAL / UTILITY
         elif resolved_verb == "say" and resolved_arg:
-            # Echo the player's own words with their original casing.
+            # Echo the player's own words with their original casing, then emit a
+            # `player_said` event so the server can broadcast the message to
+            # everyone else standing in the room (multiplayer chat).
             spoken = raw_text.split(maxsplit=1)[1]
             response = f'You say, "{spoken}".'
+            await self.emit("player_said", {
+                "name": player_name,
+                "text": spoken,
+                "location": self._player_location.name if self._player_location else None,
+            })
             matched = True
         elif resolved_verb == "hello":
             response = "The world listens..."
