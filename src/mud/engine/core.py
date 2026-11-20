@@ -138,6 +138,86 @@ class Engine:
                 return candidate
         return None
 
+    @staticmethod
+    def _held_items(entity) -> List[str]:
+        """Return the display names of the physical items `entity` carries.
+
+        A player's `contents` hold only things it has picked up; rooms are handled
+        by their own code path, so this is the inventory view over a player slot.
+        Names are sorted for deterministic output.
+        """
+        if entity is None:
+            return []
+        return sorted(c.name for c in entity.contents)
+
+    async def _handle_take(self, arg: str, player_name: Optional[str]) -> str:
+        """Move an item named `arg` from the player's room into their inventory.
+
+        Returns the reply string. Supports both the registered-player path (a
+        socket-bound client passes a name) and the legacy single-player slot.
+        """
+        target_player = self._resolve_player(player_name)
+        if target_player is not None:
+            # Multiplayer path: take from the room into the registered player.
+            room = target_player.location
+            if room is None:
+                return "There is nowhere here to take anything from."
+            target_item = self._find_item(room.contents, arg)
+            if target_item:
+                room.remove_content(target_item)
+                target_player.add_content(target_item)
+                await self.emit("item_taken", {"item_name": target_item.name.lower(), "owner": target_player.name})
+                return f"You picked up the {target_item.name}."
+            return f"There is no {arg} here."
+
+        # Legacy single-player path.
+        if not self.player:
+            return "You do not exist!"
+        if not self._player_location:
+            return "There is nowhere here to take anything from."
+        target_item = next(
+            (i for i in self._player_location.contents if i.name.lower() == arg.lower()), None
+        )
+        if target_item:
+            self._player_location.remove_content(target_item)
+            self.player.add_content(target_item)
+            await self.emit("item_taken", {"item_name": target_item.name.lower(), "owner": "player"})
+            return f"You picked up the {target_item.name}."
+        return f"There is no {arg} here."
+
+    async def _handle_drop(self, arg: str, player_name: Optional[str]) -> str:
+        """Drop an item named `arg` from the player's inventory into their room.
+
+        Returns the reply string. Supports both the registered-player path and the
+        legacy single-player slot.
+        """
+        target_player = self._resolve_player(player_name)
+        if target_player is not None:
+            # Multiplayer path: drop from the registered player into their room.
+            room = target_player.location
+            if room is None:
+                return "There is nowhere here to drop anything."
+            target_item = self._find_item(target_player.contents, arg)
+            if target_item:
+                target_player.remove_content(target_item)
+                room.add_content(target_item)
+                await self.emit("item_dropped", {"item_name": target_item.name.lower(), "location": room.name})
+                return f"You dropped the {target_item.name}."
+            return f"You aren't carrying any {arg}."
+
+        # Legacy single-player path.
+        if not self.player:
+            return "You do not exist!"
+        if not self._player_location:
+            return "There is nowhere here to drop anything."
+        target_item = next((i for i in self.player.contents if i.name.lower() == arg.lower()), None)
+        if target_item:
+            self.player.remove_content(target_item)
+            self._player_location.add_content(target_item)
+            await self.emit("item_dropped", {"item_name": target_item.name.lower(), "location": self._player_location.name})
+            return f"You dropped the {target_item.name}."
+        return f"You aren't carrying any {arg}."
+
     def _resolve_player(self, player_name):
         """Return the registered player to act as, falling back to the legacy slot."""
         if player_name:
@@ -196,7 +276,12 @@ class Engine:
             "w": "go west",  "west": "go west", 
             "u": "go up",    "up": "go up", 
             "d": "go down",  "down": "go down",
-            "exits": "show_exits"
+            "exits": "show_exits",
+            # Short forms for the everyday commands. Kept single-word so they map
+            # straight to a verb below (`i` -> `inventory`, not a direction).
+            "i": "inventory", "inv": "inventory",
+            "h": "help",
+            "exam": "examine",
         }
         
         # `look at X` is a common way to focus on something; treat it as `examine X`.
@@ -302,106 +387,68 @@ class Engine:
                     matched = True
 
         # INTERACTION (Items)
-        elif resolved_verb == "take" and resolved_arg:
-            target_player = self._resolve_player(player_name)
-
-            if target_player is not None:
-                # Multiplayer path: take from the room into the registered player.
-                room = target_player.location
-                if room is None:
-                    response = "There is nowhere here to take anything from."
-                    matched = True
-                else:
-                    target_item = self._find_item(room.contents, resolved_arg)
-                    if target_item:
-                        room.remove_content(target_item)
-                        target_player.add_content(target_item)
-                        response = f"You picked up the {target_item.name}."
-                        matched = True
-                        await self.emit("item_taken", {"item_name": target_item.name.lower(), "owner": target_player.name})
-                    else:
-                        response = f"There is no {resolved_arg} here."
-                        matched = True
-            elif not self.player:
-                # Legacy single-player path.
-                response = "You do not exist!"
-                matched = True
-            elif not self._player_location:
-                response = "There is nowhere here to take anything from."
+        elif resolved_verb == "take":
+            if not resolved_arg:
+                response = "Take what? Try `take <item>`."
                 matched = True
             else:
-                target_item = next((i for i in self._player_location.contents if i.name.lower() == resolved_arg.lower()), None)
-                if target_item:
-                    self._player_location.remove_content(target_item)
-                    self.player.add_content(target_item)
-                    response = f"You picked up the {target_item.name}."
-                    matched = True
-                    # Emit Item Taken Event
-                    await self.emit("item_taken", {"item_name": target_item.name.lower(), "owner": "player"})
-                else:
-                    response = f"There is no {resolved_arg} here."
-                    matched = True
-
-        elif resolved_verb == "drop" and resolved_arg:
-            target_player = self._resolve_player(player_name)
-
-            if target_player is not None:
-                # Multiplayer path: drop from the registered player into their room.
-                room = target_player.location
-                if room is None:
-                    response = "There is nowhere here to drop anything."
-                    matched = True
-                else:
-                    target_item = self._find_item(target_player.contents, resolved_arg)
-                    if target_item:
-                        target_player.remove_content(target_item)
-                        room.add_content(target_item)
-                        response = f"You dropped the {target_item.name}."
-                        matched = True
-                        await self.emit("item_dropped", {"item_name": target_item.name.lower(), "location": room.name})
-                    else:
-                        response = f"You aren't carrying any {resolved_arg}."
-                        matched = True
-            elif not self.player:
-                # Legacy single-player path.
-                response = "You do not exist!"
+                response = await self._handle_take(resolved_arg, player_name)
                 matched = True
-            elif not self._player_location:
-                response = "There is nowhere here to drop anything."
+
+        elif resolved_verb == "drop":
+            if not resolved_arg:
+                response = "Drop what? Try `drop <item>`."
                 matched = True
             else:
-                target_item = next((i for i in self.player.contents if i.name.lower() == resolved_arg.lower()), None)
-                if target_item:
-                    self.player.remove_content(target_item)
-                    self._player_location.add_content(target_item)
-                    response = f"You dropped the {target_item.name}."
-                    matched = True
-                    # Emit Item Dropped Event
-                    await self.emit("item_dropped", {"item_name": target_item.name.lower(), "location": self._player_location.name})
-                else:
-                    response = f"You aren't carrying any {resolved_arg}."
-                    matched = True
+                response = await self._handle_drop(resolved_arg, player_name)
+                matched = True
 
+        # EXAMINE / LOOK AT — hold first, then room contents (not just players).
         elif resolved_verb == "examine" and resolved_arg:
             # Focus on a specific entity the player can hold or see. The verb is
             # `examine X` or `look at X`; both arrive here with verb "examine".
             # Prefer an item the examiner holds; otherwise describe a named player in
             # the room (the target's presence does not depend on the examiner being registered).
             player = self._resolve_player(player_name)
-            room = player.location if player else self._player_location
+            room = player.location if player is not None else self._player_location
             held = self._find_item(player.contents, resolved_arg) if player is not None else None
             if held is not None:
                 response = f"It is {held.description}."
                 matched = True
             else:
-                target_player = next((p for p in self._players.values()
-                                      if (room is None or p.location is room) and p.name.lower() == resolved_arg), None)
-                if target_player is not None:
-                    response = f"{target_player.name} is here, exploring the world."
+                # A physical item on the floor, before any named occupant. Players
+                # live in room.contents too, so skip them here (handled below).
+                room_items = [c for c in (room.contents if room is not None else [])
+                              if not isinstance(c, Player)]
+                room_item = self._find_item(room_items, resolved_arg)
+                if room_item is not None:
+                    response = f"It is {room_item.description}."
                     matched = True
                 else:
-                    response = f"You see no {resolved_arg} here."
-                    matched = True
+                    target_player = next((p for p in self._players.values()
+                                          if (room is None or p.location is room) and p.name.lower() == resolved_arg), None)
+                    if target_player is not None:
+                        response = f"{target_player.name} is here, exploring the world."
+                        matched = True
+                    else:
+                        response = f"You see no {resolved_arg} here."
+                        matched = True
+
+        # INVENTORY / HELP (UTILITY)
+        elif resolved_verb == "inventory":
+            held = self._held_items(self._resolve_player(player_name))
+            if held:
+                response = f"You are carrying: {', '.join(held)}."
+            else:
+                response = "You are not carrying anything."
+            matched = True
+
+        elif resolved_verb == "help":
+            response = (
+                "Commands: look (l), go <direction>, exits, take <item>, drop <item>, "
+                "examine <thing> (exam), inventory (i), say <text>, hello. Try `look` first."
+            )
+            matched = True
 
         # SOCIAL / UTILITY
         elif resolved_verb == "say" and resolved_arg:
@@ -415,7 +462,7 @@ class Engine:
 
         # --- 4. FALLBACK PATH ---
         if not matched:
-            response = "[FALLBACK]"
+            response = "Hmm, I don't understand that. Type `help` for a list of commands."
 
         await self.emit("command_processed", {"raw": command_text, "clean": text, "reply": response})
         return response
