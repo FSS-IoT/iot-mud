@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Any, Callable, Dict, List, Optional
 from src.mud.content import Entity, Room, Player
 
@@ -130,9 +131,10 @@ class Engine:
 
         Matches when the typed argument is a substring of the item's display name
         (case-insensitive), so both "gold coin" and "coin" match an item named
-        "Gold Coin".
+        "Gold Coin". Leading articles ("the", "a", "an") are stripped first so
+        natural phrasings like "the gold coin" resolve to "gold coin".
         """
-        arg = arg.strip().lower()
+        arg = re.sub(r"^(the|a|an)\s+", "", arg.strip().lower())
         for candidate in collection:
             if candidate.name.lower() == arg or arg in candidate.name.lower():
                 return candidate

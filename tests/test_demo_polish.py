@@ -148,6 +148,67 @@ async def test_examine_room_item_not_held():
 # fallback reads as helpful prose, never the raw sentinel
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# leading articles (`the` / `a` / `an`) should not block a match
+# ---------------------------------------------------------------------------
+
+def _setup_two_coins():
+    """A room holding a distinguishable gold and a silver coin on the floor."""
+    engine = Engine()
+    room = Room("Treasury", "Coins glimmer on the stone floor.")
+    room.add_content(Entity("Gold Coin", "A heavy gold coin.", weight=0.05))
+    room.add_content(Entity("Silver Coin", "A smaller silver coin.", weight=0.03))
+    engine._rooms["Treasury"] = room
+    engine._player_location = room
+    engine.register_player("Ada")
+    return engine
+
+
+@pytest.mark.asyncio
+async def test_examine_the_coin_strips_article():
+    """`examine the coin` matches despite the leading article."""
+    engine = _setup()
+    response = await engine.process_command("examine the coin", "Ada")
+    assert "shiny" in response.lower()
+
+
+@pytest.mark.asyncio
+async def test_look_at_the_coin_strips_article():
+    """`look at the coin` resolves like `examine the coin`."""
+    engine = _setup()
+    response = await engine.process_command("look at the coin", "Ada")
+    assert "shiny" in response.lower()
+
+
+@pytest.mark.asyncio
+async def test_examine_the_gold_coin_distinguishes():
+    """`examine the gold coin` still picks the right coin from two."""
+    engine = _setup_two_coins()
+    response = await engine.process_command("examine the gold coin", "Ada")
+    assert "heavy" in response.lower()
+
+
+@pytest.mark.asyncio
+async def test_take_the_coin_takes_a_coin():
+    """`take the coin` succeeds and removes one coin from the room."""
+    engine = _setup_two_coins()
+    response = await engine.process_command("take the coin", "Ada")
+    assert "picked up" in response.lower()
+    remaining = [c.name for c in engine._player_location.contents]
+    # Exactly one coin was taken; the other is still on the floor.
+    assert remaining.count("Silver Coin") + remaining.count("Gold Coin") == 1
+
+
+@pytest.mark.asyncio
+async def test_take_the_gold_coin_distinguishes():
+    """`take the gold coin` grabs the gold one, leaving the silver."""
+    engine = _setup_two_coins()
+    await engine.process_command("take the gold coin", "Ada")
+    remaining = sorted(c.name for c in engine._player_location.contents)
+    assert "Gold Coin" not in remaining
+    assert "Silver Coin" in remaining
+
+
 @pytest.mark.asyncio
 async def test_unknown_command_is_helpful_not_sentinel():
     """An unrecognized command matches (no crash) and never prints [FALLBACK]."""
