@@ -99,7 +99,36 @@ class MudServer:
             return
 
         self._ws_to_player[websocket] = name
+
+        # Tell everyone already in the room that a newcomer has arrived.
         await self._broadcast_to_room(name, "player_joined")
+
+        # And tell the newcomer who is already here — otherwise they see an
+        # empty room even though occupants are standing right there. Send each
+        # existing occupant's name back to the newcomer.
+        room = self.engine.get_player(name).location
+        for other in self.engine.players_in_room(room) if room else []:
+            if other.name == name:
+                continue
+            await self._send_to_player(name, "player_joined", other.name)
+
+    async def _send_to_player(self, name: str, event_type: str, actor_name: str) -> None:
+        """Send an event to a single named player's socket (or nothing if offline)."""
+        target = next((ws for ws, ws_name in self._ws_to_player.items()
+                       if ws_name == name), None)
+        if target is None:
+            return
+        message = {
+            "v": 1,
+            "type": event_type,
+            "event_id": f"{event_type}-{int(asyncio.get_event_loop().time()*1000)}",
+            "seq": 0,
+            "data": {"name": actor_name},
+        }
+        try:
+            await target.send(json.dumps(message))
+        except websockets.exceptions.ConnectionClosed:
+            pass
 
     async def _broadcast_to_room(self, name: str, event_type: str) -> None:
         """Send an event to every other player currently in the same room."""

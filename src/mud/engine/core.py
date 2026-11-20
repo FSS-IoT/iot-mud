@@ -148,6 +148,13 @@ class Engine:
             room = target_player.location if target_player is not None else self._player_location
             if room:
                 response = room.description
+                # Items are everything in the room that is not a player; players
+                # get their own line below. This makes items visible without
+                # guessing the exact take/drop command.
+                items = [c for c in room.contents if not isinstance(c, Player)]
+                if items:
+                    listed = ", ".join(sorted(c.name for c in items))
+                    response += f"\n\nHere you see: {listed}."
                 occupants = [p for p in self._players.values()
                              if p.location is room and p.name != player_name]
                 if occupants:
