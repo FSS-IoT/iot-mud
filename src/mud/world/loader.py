@@ -38,6 +38,16 @@ async def load_demo_village(engine: Engine) -> None:
         )
         item_map[i_data["id"]] = item
 
+    # 1b. Resolve container contents (loot declared inside each item). Done in
+    # its own pass so referenced items always exist first.
+    for i_data in data.get("items", []):
+        container = item_map.get(i_data["id"])
+        if container is None:
+            continue
+        for contained_id in i_data.get("contains", []):
+            if contained_id in item_map:
+                container.add_content(item_map[contained_id])
+
     # 2. Second pass: Create all Rooms
     for r_data in data.get("rooms", []):
         room = Room(

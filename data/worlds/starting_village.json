@@ -89,7 +89,15 @@
       "description": "A sturdy oak chest, bound in rusted iron.",
       "weight": 5.0,
       "locked": true,
-      "required_key": "key_gold_1"
+      "required_key": "key_gold_1",
+      "contains": ["brass_lantern"]
+    },
+    {
+      "id": "brass_lantern",
+      "name": "Brass Lantern",
+      "description": "A brass lantern, its wick still dry.",
+      "weight": 0.4,
+      "light_source": true
     }
   ]
 }
