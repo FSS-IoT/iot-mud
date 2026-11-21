@@ -374,6 +374,38 @@ class Engine:
         listed = ", ".join(sorted(c.name for c in loot))
         return f"You open the {container.name}. Inside you see: {listed}."
 
+    async def _handle_look_in(self, arg: str, player_name: str | None) -> str:
+        """Look inside a container: `look in <chest>` / `look inside <chest>`.
+
+        A locked container refuses. An open container with nothing inside
+        reports empty. Otherwise every item it holds is listed. Names are
+        resolved by the same forgiving match as take/examine. Returns the
+        reply string.
+        """
+        target_player = self._resolve_player(player_name)
+        if target_player is not None:
+            room = target_player.location
+            if room is None:
+                return "There is nowhere here to look inside."
+            container = self._find_item(room.contents, arg)
+        else:
+            if not self.player or not self._player_location:
+                return "You do not exist!"
+            room = self._player_location
+            container = self._find_item(room.contents, arg)
+
+        if container is None:
+            return f"There is no {arg} here to look inside."
+        if getattr(container, "locked", False):
+            return f"The {container.name} is locked. Find a key and `use <key> on {container.name.lower()}`."
+
+        loot = list(container.contents)
+        if not loot:
+            return f"The {container.name} is empty."
+
+        listed = ", ".join(sorted(c.name for c in loot))
+        return f"You see inside the {container.name}: {listed}."
+
     def _resolve_player(self, player_name):
         """Return the registered player to act as, falling back to the legacy slot."""
         if player_name:
@@ -440,11 +472,20 @@ class Engine:
             "exam": "examine",
         }
         
-        # `look at X` is a common way to focus on something; treat it as `examine X`.
-        if verb.lower() == "look" and arg is not None and arg.split(maxsplit=1)[0] == "at":
-            parts = arg.split(maxsplit=1)
-            resolved_verb = "examine"
-            resolved_arg = parts[1].strip() if len(parts) > 1 else None
+        # `look at X` focuses on something; treat it as `examine X`.
+        # `look in X` / `look inside X` peer into a container.
+        if verb.lower() == "look" and arg is not None:
+            first = arg.split(maxsplit=1)[0]
+            if first == "at":
+                parts = arg.split(maxsplit=1)
+                resolved_verb = "examine"
+                resolved_arg = parts[1].strip() if len(parts) > 1 else None
+            elif first in ("in", "inside"):
+                resolved_verb = "look_in"
+                resolved_arg = arg.split(maxsplit=1)[1].strip() if len(arg.split(maxsplit=1)) > 1 else ""
+            else:
+                resolved_verb = verb
+                resolved_arg = arg
         else:
             resolved_verb = verb
             resolved_arg = arg
@@ -492,6 +533,10 @@ class Engine:
             else:
                 response = "You feel lost in a void."
                 matched = True
+
+        elif resolved_verb == "look_in" and resolved_arg:
+            response = await self._handle_look_in(resolved_arg, player_name)
+            matched = True
 
         elif resolved_verb == "show_exits":
             if not self._player_location:
@@ -640,7 +685,7 @@ class Engine:
         elif resolved_verb == "help":
             response = (
                 "Commands: look (l), go <direction>, exits, take <item>, drop <item>, "
-                "examine <thing> (exam), read <thing> (signs, books), inventory (i), say <text>, hello. Try `look` first."
+                "examine <thing> (exam), read <thing> (signs, books), look in <chest>, inventory (i), say <text>, hello. Try `look` first."
             )
             matched = True
 
