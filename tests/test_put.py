@@ -40,6 +40,22 @@ async def test_put_into_open_chest():
 
 
 @pytest.mark.asyncio
+async def test_put_item_whose_name_contains_in():
+    """Item names like Gold Coin contain 'in'; split on ' in ', not the substring."""
+    engine, player, room = await _setup()
+    coin = Entity("Gold Coin", "A gold coin.")
+    chest = Entity("Chest", "A sturdy oak chest.")
+    room.add_content(chest)
+    player.add_content(coin)
+
+    response = await engine.process_command("put gold coin in chest")
+
+    assert response == "You put the Gold Coin in the Chest."
+    assert coin in chest.contents
+    assert coin not in player.contents
+
+
+@pytest.mark.asyncio
 async def test_put_missing_item():
     """`put` refuses when the item is not carried."""
     engine, _player, room = await _setup()

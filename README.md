@@ -36,6 +36,18 @@ pip install websockets pydantic pydantic-settings PyYAML ruff pytest pytest-asyn
 ./run_demo.sh
 ```
 
+### Protocol v2 server
+
+The v2 server speaks the merged club protocol (structured room state, typed
+events, non-fatal errors) over the same engine and world as the v1 server:
+
+```bash
+python -m src.mud.net.v2_server   # ws://localhost:8765
+```
+
+`./run_demo.sh` is unchanged and still starts the v1 server. Run one or the
+other, not both, because they share the port.
+
 ### Testing
 
 #### Run all tests

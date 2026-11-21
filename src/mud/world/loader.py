@@ -55,6 +55,9 @@ async def load_demo_village(engine: Engine) -> None:
             description=r_data["description"],
             dark=bool(r_data.get("dark", False)),
         )
+        # Keep the world-file id on the room so protocol v2 can expose a stable
+        # room id instead of deriving one from the display name.
+        room.item_id = r_data["id"]
         room_map[r_data["id"]] = room
 
     # 3. Third pass: Establish interconnections (Exits) and Inventory

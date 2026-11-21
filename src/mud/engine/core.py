@@ -351,9 +351,10 @@ class Engine:
         player's room. A locked container refuses. Names are resolved by the same
         forgiving match as take/examine. Returns the reply string.
         """
-        # Split "put <item> in <container>": the item is the part before "in",
-        # the container the part after.
-        item_arg, _, container_arg = arg.partition("in")
+        # Split "put <item> in <container>" on the delimiter, not on the
+        # substring: `partition("in")` splits inside item names like "coin"
+        # and "lantern". The last " in " is the one that separates the two.
+        item_arg, _, container_arg = arg.rpartition(" in ")
         item_arg = item_arg.strip()
         container_arg = container_arg.strip()
 
@@ -654,11 +655,14 @@ class Engine:
             matched = True
 
         elif resolved_verb == "show_exits":
-            if not self._player_location:
+            acting_player = self.get_player(player_name) if player_name else None
+            room = (acting_player.location if acting_player is not None
+                    else self._player_location)
+            if not room:
                 response = "You have no context for exits here."
                 matched = True
             else:
-                exits_dict = self._player_location.exits
+                exits_dict = room.exits
                 if not exits_dict:
                     response = "There are no exits here."
                 else:
@@ -840,10 +844,13 @@ class Engine:
             # everyone else standing in the room (multiplayer chat).
             spoken = raw_text.split(maxsplit=1)[1]
             response = f'You say, "{spoken}".'
+            acting_player = self.get_player(player_name) if player_name else None
+            location = (acting_player.location if acting_player is not None
+                        else self._player_location)
             await self.emit("player_said", {
                 "name": player_name,
                 "text": spoken,
-                "location": self._player_location.name if self._player_location else None,
+                "location": location.name if location else None,
             })
             matched = True
         elif resolved_verb == "hello":
