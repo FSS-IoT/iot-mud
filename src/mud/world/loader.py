@@ -32,6 +32,7 @@ async def load_demo_village(engine: Engine) -> None:
             weight=float(i_data.get("weight", 0.0)),
             readable=bool(i_data.get("readable", False)),
             light_source=bool(i_data.get("light_source", False)),
+            item_id=i_data.get("id"),
         )
         item_map[i_data["id"]] = item
 

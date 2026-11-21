@@ -4,10 +4,16 @@ from typing import Dict, Optional, List
 class Entity:
     """Base class for everything in the world: Players, Items, Rooms."""
     def __init__(self, name: str, description: str, weight: float = 0.0,
-                 readable: bool = False, light_source: bool = False):
+                 readable: bool = False, light_source: bool = False,
+                 item_id: str | None = None):
         self.name = name
         self.description = description
         self.weight = weight
+        # A stable handle set by the world author (the object's JSON `id`). Used
+        # only when name-matching is not enough: opening a lock that names a
+        # specific key, or telling two otherwise-identical objects apart in one
+        # collection. None means "no handle", so plain demo items stay plain.
+        self.item_id = item_id
         # `readable` marks objects a player can `read` (signs, books, scrolls).
         # Plain items are not; `read <item>` is refused for them.
         self.readable = readable
