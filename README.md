@@ -36,6 +36,23 @@ pip install websockets pydantic pydantic-settings PyYAML ruff pytest pytest-asyn
 ./run_demo.sh
 ```
 
+### Protocol versions
+
+The client negotiates the wire protocol from the server's `hello` handshake.
+Protocol `2` is the merged club protocol (typed events, structured room state);
+a server advertising `[1]` keeps the legacy path, so the same client works
+against both the old server and the common one.
+
+To try the v2 path without the common server:
+
+```bash
+# Terminal 1
+python scripts/mock_v2_server.py
+
+# Terminal 2
+python scripts/client.py --uri ws://localhost:8770
+```
+
 ### Testing
 
 #### Run all tests
