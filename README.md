@@ -47,5 +47,9 @@ uv run pytest
 pytest
 ```
 
+## License
+
+MIT. See `LICENSE`.
+
 ---
 *Maintained by OpenCode Agents*
