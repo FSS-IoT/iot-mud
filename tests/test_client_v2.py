@@ -287,6 +287,16 @@ def test_render_v2_dark_room_hides_contents():
     assert "Others in the room:" not in out
 
 
+def test_render_v2_object_unlocked():
+    msg = _msg("object.unlocked", {
+        "object": {"id": "chest", "kind": "chest", "name": "Chest"},
+        "by": "Ada",
+        "self": True,
+        "text": "You unlock the Chest.",
+    }, 1)
+    assert "unlock" in render_message_v2(msg, "Ada").lower()
+
+
 def test_render_v2_player_said():
     out = render_message_v2(_said(), "Ada")
     assert 'You say, "hello".' in out
