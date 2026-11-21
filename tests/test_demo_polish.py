@@ -230,9 +230,13 @@ async def test_examine_the_gold_coin_distinguishes():
 
 @pytest.mark.asyncio
 async def test_take_the_coin_takes_a_coin():
-    """`take the coin` succeeds and removes one coin from the room."""
+    """`take the coin 1` succeeds and removes one coin from the room.
+
+    With two coins on the floor a bare `take the coin` is ambiguous, so the
+    player disambiguates with a 1-based index.
+    """
     engine = _setup_two_coins()
-    response = await engine.process_command("take the coin", "Ada")
+    response = await engine.process_command("take the coin 1", "Ada")
     assert "picked up" in response.lower()
     remaining = [c.name for c in engine._player_location.contents]
     # Exactly one coin was taken; the other is still on the floor.

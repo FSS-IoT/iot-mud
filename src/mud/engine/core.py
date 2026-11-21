@@ -141,6 +141,49 @@ class Engine:
         return None
 
     @staticmethod
+    def _disambiguate(collection, arg: str):
+        """Resolve `arg` against `collection`, supporting `<name> <n>` disambiguation.
+
+        When a bare name matches several items (e.g. two "keys"), the player can
+        pick one by 1-based index among the sorted matches: `take key 1`. The
+        index is 1-based and refers to the sorted list of matches, so
+        `key 1` is the alphabetically first. A bare name with a single match
+        resolves directly; a bare name with several matches without an index
+        returns an ambiguity message; a missing or out-of-range index returns
+        None (callers fall through to their usual refusal).
+
+        Returns a tuple `(item, message)`: exactly one is non-None.
+        """
+        arg = arg.strip()
+        tokens = arg.split()
+        # A trailing integer is a 1-based index into the sorted matches, e.g.
+        # "gold key 1". Everything before it is the base name.
+        index = None
+        if tokens and tokens[-1].isdigit():
+            index = int(tokens[-1])
+            tokens = tokens[:-1]
+        name_tokens = tokens
+        key = re.sub(r"^(the|a|an)\s+", "", " ".join(name_tokens).strip().lower())
+        matches = sorted((c for c in collection if c.name.lower() == key or key in c.name.lower()),
+                         key=lambda c: c.name.lower())
+        if not matches:
+            return None, None
+        # A trailing index is authoritative even for a single match, so an
+        # out-of-range `key 3` still fails instead of grabbing the only key.
+        if index is not None:
+            if 1 <= index <= len(matches):
+                return matches[index - 1], None
+            return None, None
+        if len(matches) == 1:
+            return matches[0], None
+        message = (
+            f"There are several {key} here: "
+            f"{', '.join(f'{i} {c.name}' for i, c in enumerate(matches, 1))}. "
+            f"Specify which, e.g. `{key} 1`."
+        )
+        return None, message
+
+    @staticmethod
     def _held_items(entity) -> List[str]:
         """Return the display names of the physical items `entity` carries.
 
@@ -239,7 +282,9 @@ class Engine:
             room = target_player.location
             if room is None:
                 return "There is nowhere here to take anything from."
-            target_item = self._find_item(room.contents, arg)
+            target_item, disambig = self._disambiguate(room.contents, arg)
+            if disambig:
+                return disambig
             if target_item:
                 room.remove_content(target_item)
                 target_player.add_content(target_item)
@@ -252,7 +297,9 @@ class Engine:
             return "You do not exist!"
         if not self._player_location:
             return "There is nowhere here to take anything from."
-        target_item = self._find_item(self._player_location.contents, arg)
+        target_item, disambig = self._disambiguate(self._player_location.contents, arg)
+        if disambig:
+            return disambig
         if target_item:
             self._player_location.remove_content(target_item)
             self.player.add_content(target_item)
@@ -272,7 +319,9 @@ class Engine:
             room = target_player.location
             if room is None:
                 return "There is nowhere here to drop anything."
-            target_item = self._find_item(target_player.contents, arg)
+            target_item, disambig = self._disambiguate(target_player.contents, arg)
+            if disambig:
+                return disambig
             if target_item:
                 target_player.remove_content(target_item)
                 room.add_content(target_item)
@@ -285,7 +334,9 @@ class Engine:
             return "You do not exist!"
         if not self._player_location:
             return "There is nowhere here to drop anything."
-        target_item = next((i for i in self.player.contents if i.name.lower() == arg.lower()), None)
+        target_item, disambig = self._disambiguate(self.player.contents, arg)
+        if disambig:
+            return disambig
         if target_item:
             self.player.remove_content(target_item)
             self._player_location.add_content(target_item)
@@ -311,15 +362,23 @@ class Engine:
             room = target_player.location
             if room is None:
                 return "There is nowhere here to put anything."
-            held = self._find_item(target_player.contents, item_arg)
-            container = self._find_item(room.contents, container_arg)
+            held, item_disambig = self._disambiguate(target_player.contents, item_arg)
+            if item_disambig:
+                return item_disambig
+            container, cont_disambig = self._disambiguate(room.contents, container_arg)
+            if cont_disambig:
+                return cont_disambig
         else:
             if not self.player or not self._player_location:
                 return "You do not exist!"
             target_player = self.player
             room = self._player_location
-            held = self._find_item(self.player.contents, item_arg)
-            container = self._find_item(room.contents, container_arg)
+            held, item_disambig = self._disambiguate(self.player.contents, item_arg)
+            if item_disambig:
+                return item_disambig
+            container, cont_disambig = self._disambiguate(room.contents, container_arg)
+            if cont_disambig:
+                return cont_disambig
 
         if held is None:
             return f"You aren't carrying any {item_arg}."
@@ -352,14 +411,22 @@ class Engine:
             room = target_player.location
             if room is None:
                 return "There is nowhere here to use a key."
-            key_item = self._find_item(target_player.contents, key_name)
-            lock_item = self._find_item(room.contents, lock_name)
+            key_item, key_disambig = self._disambiguate(target_player.contents, key_name)
+            if key_disambig:
+                return key_disambig
+            lock_item, lock_disambig = self._disambiguate(room.contents, lock_name)
+            if lock_disambig:
+                return lock_disambig
         else:
             if not self.player or not self._player_location:
                 return "You do not exist!"
             room = self._player_location
-            key_item = self._find_item(self.player.contents, key_name)
-            lock_item = self._find_item(room.contents, lock_name)
+            key_item, key_disambig = self._disambiguate(self.player.contents, key_name)
+            if key_disambig:
+                return key_disambig
+            lock_item, lock_disambig = self._disambiguate(room.contents, lock_name)
+            if lock_disambig:
+                return lock_disambig
 
         if key_item is None:
             return f"You don't have a {key_name.strip()} to use."
@@ -390,12 +457,16 @@ class Engine:
             room = target_player.location
             if room is None:
                 return "There is nowhere here to open anything."
-            container = self._find_item(room.contents, arg)
+            container, disambig = self._disambiguate(room.contents, arg)
+            if disambig:
+                return disambig
         else:
             if not self.player or not self._player_location:
                 return "You do not exist!"
             room = self._player_location
-            container = self._find_item(room.contents, arg)
+            container, disambig = self._disambiguate(room.contents, arg)
+            if disambig:
+                return disambig
 
         if container is None:
             return f"There is no {arg} here to open."
@@ -427,12 +498,16 @@ class Engine:
             room = target_player.location
             if room is None:
                 return "There is nowhere here to look inside."
-            container = self._find_item(room.contents, arg)
+            container, disambig = self._disambiguate(room.contents, arg)
+            if disambig:
+                return disambig
         else:
             if not self.player or not self._player_location:
                 return "You do not exist!"
             room = self._player_location
-            container = self._find_item(room.contents, arg)
+            container, disambig = self._disambiguate(room.contents, arg)
+            if disambig:
+                return disambig
 
         if container is None:
             return f"There is no {arg} here to look inside."
@@ -686,18 +761,29 @@ class Engine:
             # the examiner being registered).
             player = self._resolve_player(player_name)
             room = player.location if player is not None else self._player_location
-            item, target_player = self._find_target(player, room, resolved_arg)
+            held = self._find_item(player.contents, resolved_arg) if player is not None else None
             if not self._room_is_lit(player, room):
                 response = "It is too dark to see anything."
                 matched = True
-            elif item is not None:
-                response = f"It is {item.description}."
-                matched = True
-            elif target_player is not None:
-                response = f"{target_player.name} is here, exploring the world."
+            elif held is not None:
+                response = f"It is {held.description}."
                 matched = True
             else:
-                response = f"You see no {resolved_arg} here."
+                room_items = [c for c in (room.contents if room is not None else [])
+                              if not isinstance(c, Player)]
+                disambig_item, disambig = self._disambiguate(room_items, resolved_arg)
+                if disambig:
+                    response = disambig
+                elif disambig_item is not None:
+                    response = f"It is {disambig_item.description}."
+                else:
+                    target_player = next((p for p in self._players.values()
+                                          if (room is None or p.location is room)
+                                          and p.name.lower() == resolved_arg), None)
+                    if target_player is not None:
+                        response = f"{target_player.name} is here, exploring the world."
+                    else:
+                        response = f"You see no {resolved_arg} here."
                 matched = True
 
         # READ — like examine, but only readable objects (signs, books). Plain
@@ -706,19 +792,29 @@ class Engine:
         elif resolved_verb == "read" and resolved_arg:
             player = self._resolve_player(player_name)
             room = player.location if player is not None else self._player_location
-            item, target_player = self._find_target(player, room, resolved_arg)
+            held = self._find_item(player.contents, resolved_arg) if player is not None else None
             if not self._room_is_lit(player, room):
                 response = "It is too dark to see anything."
                 matched = True
-            elif item is not None and item.readable:
-                response = f"It is {item.description}."
-                matched = True
-            elif target_player is not None:
-                # A player is never something to read.
-                response = f"You can't read {target_player.name}."
+            elif held is not None and held.readable:
+                response = f"It is {held.description}."
                 matched = True
             else:
-                response = "There is nothing readable here."
+                room_items = [c for c in (room.contents if room is not None else [])
+                              if not isinstance(c, Player)]
+                disambig_item, disambig = self._disambiguate(room_items, resolved_arg)
+                if disambig:
+                    response = disambig
+                elif disambig_item is not None and disambig_item.readable:
+                    response = f"It is {disambig_item.description}."
+                else:
+                    target_player = next((p for p in self._players.values()
+                                          if (room is None or p.location is room)
+                                          and p.name.lower() == resolved_arg), None)
+                    if target_player is not None:
+                        response = f"You can't read {target_player.name}."
+                    else:
+                        response = "There is nothing readable here."
                 matched = True
 
         # INVENTORY / HELP (UTILITY)
