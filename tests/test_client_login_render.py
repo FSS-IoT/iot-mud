@@ -23,7 +23,8 @@ import websockets
 
 # Importing the client module up front ensures it is loaded before we monkeypatch
 # websockets.connect below (the client resolves `websockets.connect` at call time).
-from scripts.client import client_handler  # noqa: F401  (imported for side effect)
+from scripts.client import client_handler
+from tests.client_test_helpers import wait_for_output
 
 
 class FakeSocket:
@@ -98,12 +99,23 @@ async def run_client(script):
     lines = _queue.Queue()
     for line in script:
         lines.put(line)
-    original_input = builtins.input
-    builtins.input = lambda prompt="": lines.get()
 
-    original_connect = websockets.connect
-    websockets.connect = lambda uri: ws  # resolves to the fake via `async with`
     out = io.StringIO()
+    waited = [False]
+
+    def scripted_input(prompt=""):
+        # The join room_state is rendered by the event-loop dispatcher while
+        # input() blocks in a worker thread. Wait for it before feeding the
+        # first scripted line, so an immediate `exit` cannot race the render.
+        if not waited[0]:
+            wait_for_output(out, "Village Gate")
+            waited[0] = True
+        return lines.get()
+
+    original_input = builtins.input
+    original_connect = websockets.connect
+    builtins.input = scripted_input
+    websockets.connect = lambda uri: ws  # resolves to the fake via `async with`
     try:
         with redirect_stdout(out):
             await asyncio.wait_for(client_handler("ws://fake", "Ada"), timeout=5)
