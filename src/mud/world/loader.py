@@ -33,6 +33,8 @@ async def load_demo_village(engine: Engine) -> None:
             readable=bool(i_data.get("readable", False)),
             light_source=bool(i_data.get("light_source", False)),
             item_id=i_data.get("id"),
+            locked=bool(i_data.get("locked", False)),
+            required_key=i_data.get("required_key"),
         )
         item_map[i_data["id"]] = item
 

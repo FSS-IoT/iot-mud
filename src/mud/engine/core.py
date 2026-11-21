@@ -295,6 +295,49 @@ class Engine:
             return f"You dropped the {target_item.name}."
         return f"You aren't carrying any {arg}."
 
+    async def _handle_use(self, arg: str, player_name: str | None) -> str:
+        """Open a lock with a key: `use <key> on <lock>`.
+
+        Names locate the objects by the same forgiving match as take/examine,
+        but whether the lock opens is decided by identity, not name. The key is
+        resolved from the player's inventory, the lock from the player's room.
+        The key's `item_id` must equal the lock's `required_key`; otherwise the
+        key simply does not fit. Returns the reply string.
+        """
+        if " on " not in arg:
+            return "Use a key on something: `use <key> on <lock>`."
+
+        key_name, lock_name = arg.split(" on ", 1)
+
+        target_player = self._resolve_player(player_name)
+        if target_player is not None:
+            room = target_player.location
+            if room is None:
+                return "There is nowhere here to use a key."
+            key_item = self._find_item(target_player.contents, key_name)
+            lock_item = self._find_item(room.contents, lock_name)
+        else:
+            if not self.player or not self._player_location:
+                return "You do not exist!"
+            room = self._player_location
+            key_item = self._find_item(self.player.contents, key_name)
+            lock_item = self._find_item(room.contents, lock_name)
+
+        if key_item is None:
+            return f"You don't have a {key_name.strip()} to use."
+        if lock_item is None:
+            return f"There is no {lock_name.strip()} here to use a {key_name.strip()} on."
+        if not getattr(lock_item, "locked", False):
+            return f"The {lock_item.name} is already open."
+
+        # Identity, not name: the lock checks for its specific key.
+        if getattr(lock_item, "required_key", None) and getattr(key_item, "item_id", None) == lock_item.required_key:
+            lock_item.locked = False
+            await self.emit("item_unlocked", {"item_name": lock_item.name.lower(), "location": room.name})
+            return f"You turn the {key_item.name} and the {lock_item.name} clicks open."
+
+        return f"The {key_item.name} does not fit the {lock_item.name}."
+
     def _resolve_player(self, player_name):
         """Return the registered player to act as, falling back to the legacy slot."""
         if player_name:
@@ -482,6 +525,16 @@ class Engine:
                 matched = True
             else:
                 response = await self._handle_drop(resolved_arg, player_name)
+                matched = True
+
+        # USE — open a lock with a key: `use <key> on <lock>`. Names locate the
+        # objects; identity decides whether the lock opens.
+        elif resolved_verb == "use":
+            if not resolved_arg:
+                response = "Use what on what? Try `use <key> on <lock>`."
+                matched = True
+            else:
+                response = await self._handle_use(resolved_arg, player_name)
                 matched = True
 
         # EXAMINE / LOOK AT — hold first, then room contents (not just players).

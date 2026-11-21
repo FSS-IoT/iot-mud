@@ -41,3 +41,20 @@ async def test_loader_maps_json_id_to_item_id():
     torch = next(c for c in shop.contents if c.name == "Torch")
 
     assert torch.item_id == "torch"
+
+
+@pytest.mark.asyncio
+async def test_demo_world_seeds_lock_and_key():
+    """The demo world carries a locked chest and a matching key."""
+    engine = Engine()
+    await load_demo_village(engine)
+
+    shop = engine.get_room("Alchemist Shop")
+    forest = engine.get_room("Mysterious Forest")
+
+    key = next(c for c in shop.contents if c.name == "Gold Key")
+    chest = next(c for c in forest.contents if c.name == "Chest")
+
+    assert key.item_id == "key_gold_1"
+    assert chest.locked is True
+    assert chest.required_key == "key_gold_1"

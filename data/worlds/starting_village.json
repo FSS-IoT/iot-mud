@@ -37,7 +37,7 @@
       "exits": {
         "east": "market"
       },
-      "item_ids": ["torch"]
+      "item_ids": ["torch", "key_gold_1"]
     },
     {
       "id": "forest",
@@ -47,7 +47,7 @@
       "exits": {
         "south": "market"
       },
-      "item_ids": []
+      "item_ids": ["chest_forest"]
     }
   ],
   "items": [
@@ -76,6 +76,20 @@
       "name": "Loaf of Bread",
       "description": "A stale but edible loaf.",
       "weight": 0.3
+    },
+    {
+      "id": "key_gold_1",
+      "name": "Gold Key",
+      "description": "A small gold key, warm to the touch.",
+      "weight": 0.1
+    },
+    {
+      "id": "chest_forest",
+      "name": "Chest",
+      "description": "A sturdy oak chest, bound in rusted iron.",
+      "weight": 5.0,
+      "locked": true,
+      "required_key": "key_gold_1"
     }
   ]
 }
