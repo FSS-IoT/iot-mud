@@ -293,6 +293,46 @@ class Engine:
             return f"You dropped the {target_item.name}."
         return f"You aren't carrying any {arg}."
 
+    async def _handle_put(self, arg: str, player_name: str | None) -> str:
+        """Put an item inside a container: `put <item> in <container>`.
+
+        The item is resolved from the player's inventory; the container from the
+        player's room. A locked container refuses. Names are resolved by the same
+        forgiving match as take/examine. Returns the reply string.
+        """
+        # Split "put <item> in <container>": the item is the part before "in",
+        # the container the part after.
+        item_arg, _, container_arg = arg.partition("in")
+        item_arg = item_arg.strip()
+        container_arg = container_arg.strip()
+
+        target_player = self._resolve_player(player_name)
+        if target_player is not None:
+            room = target_player.location
+            if room is None:
+                return "There is nowhere here to put anything."
+            held = self._find_item(target_player.contents, item_arg)
+            container = self._find_item(room.contents, container_arg)
+        else:
+            if not self.player or not self._player_location:
+                return "You do not exist!"
+            target_player = self.player
+            room = self._player_location
+            held = self._find_item(self.player.contents, item_arg)
+            container = self._find_item(room.contents, container_arg)
+
+        if held is None:
+            return f"You aren't carrying any {item_arg}."
+        if container is None:
+            return f"There is no {container_arg} here to put it in."
+        if getattr(container, "locked", False):
+            return f"The {container.name} is locked. Find a key and `use <key> on {container.name.lower()}`."
+
+        target_player.remove_content(held)
+        container.add_content(held)
+        await self.emit("item_put", {"item_name": held.name.lower(), "container": container.name.lower(), "location": room.name})
+        return f"You put the {held.name} in the {container.name}."
+
     async def _handle_use(self, arg: str, player_name: str | None) -> str:
         """Open a lock with a key: `use <key> on <lock>`.
 
@@ -608,6 +648,14 @@ class Engine:
                 response = await self._handle_drop(resolved_arg, player_name)
                 matched = True
 
+        elif resolved_verb == "put":
+            if not resolved_arg or "in" not in resolved_arg:
+                response = "Put what where? Try `put <item> in <container>`."
+                matched = True
+            else:
+                response = await self._handle_put(resolved_arg, player_name)
+                matched = True
+
         # USE — open a lock with a key: `use <key> on <lock>`. Names locate the
         # objects; identity decides whether the lock opens.
         elif resolved_verb == "use":
@@ -684,7 +732,7 @@ class Engine:
 
         elif resolved_verb == "help":
             response = (
-                "Commands: look (l), go <direction>, exits, take <item>, drop <item>, "
+                "Commands: look (l), go <direction>, exits, take <item>, drop <item>, put <item> in <container>, "
                 "examine <thing> (exam), read <thing> (signs, books), look in <chest>, inventory (i), say <text>, hello. Try `look` first."
             )
             matched = True
