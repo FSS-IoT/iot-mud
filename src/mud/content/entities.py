@@ -22,6 +22,9 @@ class Entity:
         # stays locked rather than crashing.
         self.locked = locked
         self.required_key = required_key
+        # The items a container holds when closed (its loot). `add_content`
+        # populates this; `open <chest>` spills it into the room so plain
+        # `take` can then pick it up. Empty by default, so plain items stay plain.
         # `readable` marks objects a player can `read` (signs, books, scrolls).
         # Plain items are not; `read <item>` is refused for them.
         self.readable = readable

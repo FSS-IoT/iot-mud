@@ -252,9 +252,7 @@ class Engine:
             return "You do not exist!"
         if not self._player_location:
             return "There is nowhere here to take anything from."
-        target_item = next(
-            (i for i in self._player_location.contents if i.name.lower() == arg.lower()), None
-        )
+        target_item = self._find_item(self._player_location.contents, arg)
         if target_item:
             self._player_location.remove_content(target_item)
             self.player.add_content(target_item)
@@ -337,6 +335,44 @@ class Engine:
             return f"You turn the {key_item.name} and the {lock_item.name} clicks open."
 
         return f"The {key_item.name} does not fit the {lock_item.name}."
+
+    async def _handle_open(self, arg: str, player_name: str | None) -> str:
+        """Open a container: `open <chest>`.
+
+        A locked container refuses. An open container with nothing inside
+        reports empty. Otherwise every item it holds is spilled into the
+        player's room so a plain `take <loot>` can then pick it up, and a
+        `chest_opened` event fires. Names are resolved by the same forgiving
+        match as take/examine. Returns the reply string.
+        """
+        target_player = self._resolve_player(player_name)
+        if target_player is not None:
+            room = target_player.location
+            if room is None:
+                return "There is nowhere here to open anything."
+            container = self._find_item(room.contents, arg)
+        else:
+            if not self.player or not self._player_location:
+                return "You do not exist!"
+            room = self._player_location
+            container = self._find_item(room.contents, arg)
+
+        if container is None:
+            return f"There is no {arg} here to open."
+        if getattr(container, "locked", False):
+            return f"The {container.name} is locked. Find a key and `use <key> on {container.name.lower()}`."
+
+        loot = list(container.contents)
+        if not loot:
+            return f"The {container.name} is empty."
+
+        for item in loot:
+            container.remove_content(item)
+            room.add_content(item)
+        await self.emit("chest_opened", {"item_name": container.name.lower(), "location": room.name})
+
+        listed = ", ".join(sorted(c.name for c in loot))
+        return f"You open the {container.name}. Inside you see: {listed}."
 
     def _resolve_player(self, player_name):
         """Return the registered player to act as, falling back to the legacy slot."""
@@ -535,6 +571,17 @@ class Engine:
                 matched = True
             else:
                 response = await self._handle_use(resolved_arg, player_name)
+                matched = True
+
+        # OPEN — open a container: `open <chest>`. A locked one refuses; an
+        # open, empty one reports empty; otherwise its contents spill into the
+        # room so a plain `take` can then pick them up.
+        elif resolved_verb == "open":
+            if not resolved_arg:
+                response = "Open what? Try `open <chest>`."
+                matched = True
+            else:
+                response = await self._handle_open(resolved_arg, player_name)
                 matched = True
 
         # EXAMINE / LOOK AT — hold first, then room contents (not just players).
